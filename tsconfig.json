@@ -1,78 +1,71 @@
 {
-	"compilerOptions": {
-		// Target modern JavaScript for Bun compatibility
-		"target": "ES2022",
+    "compilerOptions": {
+        // Target modern JavaScript for Bun compatibility
+        "target": "ES2022",
 
-		// Use ESNext modules for modern module syntax
-		"module": "ESNext",
+        // Use ESNext modules for modern module syntax
+        "module": "ESNext",
 
-		// Allow both CommonJS and ES modules for compatibility
-		"moduleResolution": "bundler",
+        // Allow both CommonJS and ES modules for compatibility
+        "moduleResolution": "bundler",
 
-		// Enable strict type checking
-		"strict": true,
+        // Enable strict type checking
+        "strict": true,
 
-		// Ensure all files are modules
-		"esModuleInterop": true,
+        // Ensure all files are modules
+        "esModuleInterop": true,
 
-		// Allow synthetic default imports
-		"allowSyntheticDefaultImports": true,
+        // Allow synthetic default imports
+        "allowSyntheticDefaultImports": true,
 
-		// Skip library checking for faster compilation
-		"skipLibCheck": true,
+        // Skip library checking for faster compilation
+        "skipLibCheck": true,
 
-		// Force consistent casing in file names
-		"forceConsistentCasingInFileNames": true,
+        // Force consistent casing in file names
+        "forceConsistentCasingInFileNames": true,
 
-		// Generate source maps for debugging
-		"sourceMap": true,
+        // Generate source maps for debugging
+        "sourceMap": true,
 
-		// Set base URL for path resolution
-		"baseUrl": ".",
+        // Set base URL for path resolution
+        "baseUrl": ".",
 
-		// Define path aliases
-		"paths": {
-			"@/*": ["./libs/*"]
-		},
+        // Define path aliases
+        "paths": {
+            "@/*": ["./libs/*"]
+        },
 
-		// Enable decorators (if needed)
-		"experimentalDecorators": true,
+        // Enable decorators (if needed)
+        "experimentalDecorators": true,
 
-		// Enable emit metadata for decorators
-		"emitDecoratorMetadata": true,
+        // Enable emit metadata for decorators
+        "emitDecoratorMetadata": true,
 
-		// Resolve JSON modules
-		"resolveJsonModule": true,
+        // Resolve JSON modules
+        "resolveJsonModule": true,
 
-		// Allow JavaScript files to be compiled
-		"allowJs": false,
+        // Allow JavaScript files to be compiled
+        "allowJs": false,
 
-		// Don't emit files (Biome handles formatting)
-		"noEmit": true,
+        // Don't emit files (Biome handles formatting)
+        "noEmit": true,
 
-		// Report errors when falling through case statements
-		"noFallthroughCasesInSwitch": true,
+        // Report errors when falling through case statements
+        "noFallthroughCasesInSwitch": true,
 
-		// Report errors for implicit any types
-		"noImplicitAny": true,
+        // Report errors for implicit any types
+        "noImplicitAny": true,
 
-		// Report errors for implicit this types
-		"noImplicitThis": true,
+        // Report errors for implicit this types
+        "noImplicitThis": true,
 
-		// Report errors for implicit returns
-		"noImplicitReturns": true
-	},
+        // Report errors for implicit returns
+        "noImplicitReturns": true
+    },
 
-	// Include source files
-	"include": ["*.ts", "libs/**/*.ts", "**/*.ts"],
+    // Include source files
+    "include": ["*.ts", "libs/**/*.ts", "**/*.ts"],
 
-	// Exclude files and directories
-	"exclude": [
-		"node_modules",
-		"dist",
-		"build",
-		"temp_build",
-		"**/*.js",
-		"**/*.d.ts"
-	]
+    // Exclude files and directories
+    "exclude": ["node_modules", "dist", "build", "temp_build", "**/*.js", "**/*.d.ts"]
 }
