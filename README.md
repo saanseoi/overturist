@@ -29,30 +29,6 @@ cd overturist
 bun install
 ```
 
-## Setup
-
-1. Copy the example environment file:
-
-```bash
-cp .env.example .env
-```
-
-2. Edit the `.env` file with your desired configuration:
-
-```bash
-# Region code for output directory structure
-COUNTRY_CODE="hk"
-
-# Bounding box coordinates for your target area
-BBOX_XMIN=113.77
-BBOX_XMAX=114.57
-BBOX_YMIN=22.08
-BBOX_YMAX=22.63
-
-# Division ID for the specific region (check release for valid IDs)
-DIVISION_ID="b4f09a9f-4cba-4a7c-bf58-2e63bc2e913d"
-```
-
 ## Usage
 
 ### Basic Usage
@@ -68,7 +44,7 @@ bun overturist.ts
 | Option       | Alias | Description                                               |
 | ------------ | ----- | --------------------------------------------------------- |
 | `--skip`     | -     | Skip existing files and download missing ones (default)   |
-| `--override` | -     | Replace existing files with fresh downloads               |
+| `--replace`  | -     | Replace existing files with fresh downloads               |
 | `--abort`    | -     | Exit the script if existing files are found               |
 | `--historic` | -     | Select a specific release version from available versions |
 | `--help`     | `-h`  | Show help message                                         |
@@ -82,8 +58,8 @@ bun overturist.ts
 # Automatically skip existing files
 bun overturist.ts --skip
 
-# Override existing files
-bun overturist.ts --override
+# Replace existing files
+bun overturist.ts --replace
 
 # Exit if existing files are found
 bun overturist.ts --abort
@@ -126,9 +102,8 @@ overturist/
 The tool reads configuration from:
 
 1. **Environment variables** (via `.env` file):
-   - `COUNTRY_CODE`: Country/region code for output directory structure
-   - `BBOX_XMIN`, `BBOX_XMAX`, `BBOX_YMIN`, `BBOX_YMAX`: Bounding box coordinates
    - `DIVISION_ID`: Overture Maps division ID for the target region
+   - `BBOX_XMIN`, `BBOX_XMAX`, `BBOX_YMIN`, `BBOX_YMAX`: Bounding box coordinates
 
 2. **Default settings** in `libs/config.ts`:
    - Output directory: `./data`
