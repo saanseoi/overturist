@@ -1,6 +1,6 @@
 import * as cheerio from "cheerio";
 import fetch from "node-fetch";
-import type { Config, OvertureRelease } from "./types";
+import type { InitialConfig, OvertureRelease } from "./types";
 import { parseNaturalDateToISO } from "./utils";
 
 /**
@@ -9,7 +9,7 @@ import { parseNaturalDateToISO } from "./utils";
  * @returns Promise resolving to array of OvertureRelease objects scraped from the webpage
  * @throws Error if HTTP request fails or webpage structure is unexpected
  */
-export async function scrapeReleaseCalendar(config: Config): Promise<OvertureRelease[]> {
+export async function scrapeReleaseCalendar(config: InitialConfig): Promise<OvertureRelease[]> {
     const response = await fetch(config.releaseUrl, {
         headers: {
             "User-Agent": "Overturist-Release-Scraper/1.0 (Glorious Purpose)",

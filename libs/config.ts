@@ -1,7 +1,7 @@
 import { DEFAULT_XMAX, DEFAULT_XMIN, DEFAULT_YMAX, DEFAULT_YMIN } from "./constants";
-import type { CliArgs, Config } from "./types";
+import type { CliArgs, InitialConfig } from "./types";
 
-const CONFIG: Config = {
+const CONFIG: InitialConfig = {
     outputDir: "./data",
     releaseFn: "releases.json",
     releaseUrl: "https://docs.overturemaps.org/release-calendar/",
@@ -18,7 +18,7 @@ const CONFIG: Config = {
  * Returns the application configuration object with environment variables and defaults.
  * @returns Config object containing all application settings
  */
-export function getConfig(): Config {
+export function getConfig(): InitialConfig {
     return CONFIG;
 }
 
@@ -27,7 +27,7 @@ export function getConfig(): Config {
  * @param config - The configuration object to update
  * @param args - The CLI arguments to apply
  */
-export function applyArgs(config: Config, args: CliArgs): void {
+export function applyArgs(config: InitialConfig, args: CliArgs): void {
     // Override division ID if provided via CLI
     if (args.divisionId) {
         config.divisionId = args.divisionId;
@@ -45,7 +45,7 @@ export function applyArgs(config: Config, args: CliArgs): void {
  * @param config - The configuration object to update
  * @param cliArgs - The CLI arguments to reapply
  */
-export function reloadConfig(config: Config, cliArgs: CliArgs): void {
+export function reloadConfig(config: InitialConfig, cliArgs: CliArgs): void {
     // Reload environment variables into config
     config.bbox = {
         xmin: DEFAULT_XMIN,
