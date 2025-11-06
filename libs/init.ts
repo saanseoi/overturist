@@ -33,13 +33,6 @@ export async function initialize(
     const { releaseData, releaseVersion } = await initializeReleaseVersion(config, specifiedReleaseVersion);
     config.releaseVersion = releaseVersion;
 
-    // DIVISION ID
-
-    // Division selection workflow - skip if DIVISION_ID is provided
-    if (!config.divisionId) {
-        await handleDivisionSelection(config as Config);
-    }
-
     // THEME MAPPING
 
     // Initialize theme mapping with comprehensive validation and fallback logic
@@ -49,6 +42,13 @@ export async function initialize(
         selectedThemes,
         selectedTypes,
     );
+
+    // DIVISION ID
+
+    // Division selection workflow - skip if DIVISION_ID is provided
+    if (!config.divisionId) {
+        await handleDivisionSelection(config as Config);
+    }
 
     const outputDir = getOutputDir(config as Config, config.releaseVersion);
     await ensureDirectoryExists(outputDir);

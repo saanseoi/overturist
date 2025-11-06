@@ -49,33 +49,6 @@ export const ADMIN_LEVELS_BY_VERSION = {
 } as const;
 
 /**
- * Returns the admin levels configuration for a specific version.
- * If no version is defined as a key, we assume the ADMIN_LEVELS mapping hasn't changed in that version.
- * @param version - The Overture Maps release version
- * @returns Admin levels configuration object
- */
-export function getAdminLevels(
-    version: string,
-): (typeof ADMIN_LEVELS_BY_VERSION)[keyof typeof ADMIN_LEVELS_BY_VERSION] {
-    // Return the specific version if it exists
-    if (version in ADMIN_LEVELS_BY_VERSION) {
-        return ADMIN_LEVELS_BY_VERSION[version as keyof typeof ADMIN_LEVELS_BY_VERSION];
-    }
-
-    // Sort versions and find the first version where provided version is NOT less than the key
-    const sortedVersions = Object.keys(ADMIN_LEVELS_BY_VERSION).sort();
-
-    for (const availableVersion of sortedVersions) {
-        if (version >= availableVersion) {
-            return ADMIN_LEVELS_BY_VERSION[availableVersion as keyof typeof ADMIN_LEVELS_BY_VERSION];
-        }
-    }
-
-    // If provided version is older than all available versions, return the oldest
-    return ADMIN_LEVELS_BY_VERSION[sortedVersions[0] as keyof typeof ADMIN_LEVELS_BY_VERSION];
-}
-
-/**
  * @deprecated Use getAdminLevels(version) instead.
  * Administrative level options mapped to their subtypes.
  * This is maintained for backward compatibility.
