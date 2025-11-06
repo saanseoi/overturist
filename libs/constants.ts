@@ -3,27 +3,84 @@ export const OMF_S3_BUCKET = "overturemaps-us-west-2";
 export const OMF_S3_PREFIX = "release/";
 
 /**
- * Administrative level options mapped to their subtypes.
+ * Administrative level mappings by version.
  * Used for filtering division searches by administrative hierarchy level.
+ * @note Schema 1.XX reclassified subtypes, so for backward compatibility, we
+ *       we support both old and new subtypes.
+ * @note Since it's unclear how to handle "borough" subtypes, they are included in both the Local and Community levels.
  */
-export const ADMIN_LEVELS = {
-    1: {
-        name: "National",
-        subtypes: ["country", "dependency"],
+export const ADMIN_LEVELS_BY_VERSION = {
+    "2025-09-24.0": {
+        1: {
+            name: "National",
+            subtypes: ["country", "dependency"],
+        },
+        2: {
+            name: "Regional",
+            subtypes: ["region"],
+        },
+        3: {
+            name: "Local",
+            subtypes: ["county", "localadmin", "locality"],
+        },
+        4: {
+            name: "Community",
+            subtypes: ["macrohood", "neighborhood", "microhood"],
+        },
     },
-    2: {
-        name: "Regional",
-        subtypes: ["region"],
-    },
-    3: {
-        name: "Local",
-        subtypes: ["county", "localadmin", "locality"],
-    },
-    4: {
-        name: "Community",
-        subtypes: ["macrohood", "neighborhood", "microhood"],
+    "2025-12-22.0": {
+        1: {
+            name: "National",
+            subtypes: ["admin0"],
+        },
+        2: {
+            name: "Regional",
+            subtypes: ["admin1"],
+        },
+        3: {
+            name: "Local",
+            subtypes: ["admin2", "admin3", "locality", "borough"],
+        },
+        4: {
+            name: "Community",
+            subtypes: ["borough", "macrohood", "neighborhood", "microhood"],
+        },
     },
 } as const;
+
+/**
+ * Returns the admin levels configuration for a specific version.
+ * If no version is defined as a key, we assume the ADMIN_LEVELS mapping hasn't changed in that version.
+ * @param version - The Overture Maps release version
+ * @returns Admin levels configuration object
+ */
+export function getAdminLevels(
+    version: string,
+): (typeof ADMIN_LEVELS_BY_VERSION)[keyof typeof ADMIN_LEVELS_BY_VERSION] {
+    // Return the specific version if it exists
+    if (version in ADMIN_LEVELS_BY_VERSION) {
+        return ADMIN_LEVELS_BY_VERSION[version as keyof typeof ADMIN_LEVELS_BY_VERSION];
+    }
+
+    // Sort versions and find the first version where provided version is NOT less than the key
+    const sortedVersions = Object.keys(ADMIN_LEVELS_BY_VERSION).sort();
+
+    for (const availableVersion of sortedVersions) {
+        if (version >= availableVersion) {
+            return ADMIN_LEVELS_BY_VERSION[availableVersion as keyof typeof ADMIN_LEVELS_BY_VERSION];
+        }
+    }
+
+    // If provided version is older than all available versions, return the oldest
+    return ADMIN_LEVELS_BY_VERSION[sortedVersions[0] as keyof typeof ADMIN_LEVELS_BY_VERSION];
+}
+
+/**
+ * @deprecated Use getAdminLevels(version) instead.
+ * Administrative level options mapped to their subtypes.
+ * This is maintained for backward compatibility.
+ */
+export const ADMIN_LEVELS = ADMIN_LEVELS_BY_VERSION["2025-09-24.0"];
 
 export const DEFAULT_XMIN = -180;
 export const DEFAULT_XMAX = 180;
