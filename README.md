@@ -10,6 +10,14 @@ Overturist is a command-line tool that downloads and processes Overture Maps dat
 
 Note that the Overture Maps Foundation maintain a 60 day retention policy. Data older than 60 days may not be available.
 
+## Features
+
+- Search for the area or place you want to download (all languages supported)
+- Download all, or a selection, of featureTypes
+- Results can be filtered by _boundaries_ or _bounding box_
+- Interactive or scripted mode
+- Cached query results
+
 ## Prerequisites
 
 - [Bun](https://bun.sh/) (recommended package manager and runtime)
@@ -31,42 +39,122 @@ bun install
 
 ## Usage
 
-### Basic Usage
+Overturist supports two distinct modes:
 
-Run the tool interactively:
+### Interactive Mode (Default)
+For guided use, searching administrative divisions, and browsing available releases:
 
 ```bash
 bun overturist.ts
 ```
 
+### Non-Interactive Mode (Scripting)
+For automation, CI/CD pipelines, and scripting:
+
+```bash
+bun overturist.ts get [OPTIONS]
+```
+
+**Key difference**: `get` command runs without further user input, and requires the relevant division to be provided as an option (`-d`) or env variable (`DIVISION_ID`).
+
 ### Command Line Options
 
+#### Download Options
+| Option       | Alias | Description                                               |
+| ------------ | ----- | --------------------------------------------------------- |
+| `--release`  | `-r`  | Download specific release version (e.g., 2025-10-22.0)    |
+| `--theme`    | `-T`  | Download only specific themes (repeatable)                 |
+| `--type`     | `-t`  | Download only specific feature types (repeatable)          |
+
+#### Geographic Selection
+| Option       | Alias | Description                                               |
+| ------------ | ----- | --------------------------------------------------------- |
+| `--division` | `-d`  | Filter results by division's boundaries                    |
+| `--bbox`     | `-b`  | Filter results by bounding box (e.g., -71.068,42.353,-71.058,42.363) |
+
+#### File Handling
 | Option       | Alias | Description                                               |
 | ------------ | ----- | --------------------------------------------------------- |
 | `--skip`     | -     | Skip existing files and download missing ones (default)   |
 | `--replace`  | -     | Replace existing files with fresh downloads               |
-| `--abort`    | -     | Exit the script if existing files are found               |
-| `--historic` | -     | Select a specific release version from available versions |
+| `--abort`    | -     | Exit if existing files are found                          |
+
+#### Help
+| Option       | Alias | Description                                               |
+| ------------ | ----- | --------------------------------------------------------- |
+| `--examples` | `-x`  | Show detailed usage examples                              |
 | `--help`     | `-h`  | Show help message                                         |
 
 ### Examples
 
+#### Interactive Mode Examples
+
 ```bash
-# Interactive mode (default behavior)
+# Start interactive mode
 bun overturist.ts
 
-# Automatically skip existing files
-bun overturist.ts --skip
+# Show help (stays in interactive mode)
+bun overturist.ts --help
+
+# Show examples (stays in interactive mode)
+bun overturist.ts --examples
+```
+
+#### Non-Interactive Mode Examples
+
+```bash
+# Basic download (requires division_id)
+bun overturistist get --division <id>
+
+# Download specific theme
+bun overturistist get --division <id> --theme buildings
+
+# Download with specific release
+bun overturistist get --division <id> --release 2025-10-22.0
 
 # Replace existing files
-bun overturist.ts --replace
+bun overturistist get --division <id> --replace
 
-# Exit if existing files are found
-bun overturist.ts --abort
+# Download within bounding box
+bun overturistist get --division <id> --bbox -71.068,42.353,-71.058,42.363
 
-# Select from available release versions
-bun overturist.ts --historic
+# Complex example with multiple options
+bun overturistist get \
+  --division <id> \
+  --theme buildings,transportation \
+  --type building,segment \
+  --release 2025-10-22.0 \
+  --replace
 ```
+
+#### Configuration Sources
+
+The tool reads configuration from multiple sources (in order of priority):
+
+```bash
+# Priority 1: CLI arguments (highest)
+bun overturist.ts --get --division <id> --theme buildings
+
+# Priority 2: Environment variables (.env file)
+# DIVISION_ID="b4f09a9f-4cba-4a7c-bf58-2e63bc2e913d"
+# FEATURE_TYPES="building,address"
+# ON_FILE_EXISTS="replace"
+
+# Priority 3: Default values
+# OnFileExists="skip", Release="latest"
+```
+
+### Interactive Mode
+
+When run without command-line options, Overturist enters interactive mode with a main menu:
+
+- **Download latest**: Downloads the most recent Overture Maps release using current configuration
+- **Repeat a search**: Browse and re-run previous administrative division searches (shows only when search history exists)
+- **Download historic**: Select and download from available historical releases (last 60 days)
+- **Settings**: Manage preferences and cache (show current config, reset preferences, view cache stats, purge cache)
+- **Exit**: Quit the application
+
+The interactive mode is ideal for exploratory use cases where you want to search for specific administrative divisions or browse available releases before downloading.
 
 ## Development
 
@@ -97,32 +185,63 @@ overturist/
 └── README.md       # This file
 ```
 
-## Configuration
-
-The tool reads configuration from:
-
-1. **Environment variables** (via `.env` file):
-   - `DIVISION_ID`: Overture Maps division ID for the target region
-   - `BBOX_XMIN`, `BBOX_XMAX`, `BBOX_YMIN`, `BBOX_YMAX`: Bounding box coordinates
-
-2. **Default settings** in `libs/config.ts`:
-   - Output directory: `./data`
-   - Release metadata file: `releases.json`
-   - Release calendar URL: [Overture Maps official release calendar](https://docs.overturemaps.org/release-calendar/)
-
 ## Output
 
 Downloaded data is saved as `parquet` files in the `./data/` directory organized by:
 
-- Country code
 - Release version
+- Division Hierachy (e.g. country, region, locality etc)
 - Feature type
 
 The tool handles file conflicts based on the selected strategy.
 
+## Configuration
+
+The tool reads configuration from multiple sources (in order of priority):
+
+1. **Command-line options** (highest priority):
+   - `--division`: Override division ID for the target region
+   - `--bbox`: Override bounding box coordinates (format: xmin,ymin,xmax,ymax)
+
+2. **Environment variables** (via `.env` file):
+   - `DIVISION_ID`: Overture Maps division ID for the target region
+   - `BBOX_XMIN`, `BBOX_XMAX`, `BBOX_YMIN`, `BBOX_YMAX`: Bounding box coordinates (optional - can be set via interactive search)
+
+3. **Default settings** in `libs/config.ts`:
+   - Output directory: `./data`
+   - Release metadata file: `releases.json`
+   - Release calendar URL: [Overture Maps official release calendar](https://docs.overturemaps.org/release-calendar/)
+
+**Note**: Bounding box configuration is optional. If not provided via environment variables or CLI options, you can search for administrative divisions interactively and the tool will use the division's boundaries.
+
+
+## Caching
+
+Overturist uses a `.cache/` directory to store:
+
+- **Division records**: `.cache/{version}/division/{id}.json` - Stores division data per version to avoid re-downloading the same division data
+- **Search history**: `.cache/{version}/search/{adminLevel}/{term}.json` - Caches administrative division search results with timestamps for quick access
+- **Themes**: `.cache/{version}/theme_mapping.json` - Caches theme mappings for each release version
+- **Release metadata**: `.cache/releases.json` - Caches available release versions from S3
+
+The cache is version-specific, ensuring data integrity across different Overture releases while improving performance for repeated downloads. Search history enables quick repetition of previous administrative division searches without re-querying the S3 data (which is slow!).
+
+## Theme and Type Filtering
+
+OMF partitions the data by [themes and feature types](https://docs.overturemaps.org/guides/). Overturist supports filters by
+
+- **Themes**: High-level categories like `buildings`, `transportation`, `places`, etc.
+- **Types**: Specific feature types like `building`, `address`, `segment`, etc.
+
+When both `--theme` and `--type` options are provided, the tool downloads the union of matching feature types. Invalid themes or types will trigger an automatic refresh of the theme mapping from S3 to ensure the most current schema is used.
+
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+## Roadmap to V1
+
+- [ ] Select Themes interactively
 
 ## Contributing
 
