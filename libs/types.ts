@@ -1,7 +1,13 @@
 /**
- * Valid modes for how existing files should be handled.
+ * CUSTOM
  */
-export type OnExistingFilesAction = "Skip" | "Replace" | "Abort";
+
+type Omit<T, K extends keyof T> = Pick<T, Exclude<keyof T, K>>;
+type PartialBy<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
+
+/**
+ * OVERTURE SCHEMA
+ */
 
 /**
  * Division information from Overture Maps data.
@@ -29,9 +35,8 @@ export type Division = {
 };
 
 /**
- * Selected division information from user search and selection.
+ * CONFIG
  */
-export type SelectedDivision = Division;
 
 /**
  * Configuration object containing application settings and environment variables.
@@ -48,15 +53,14 @@ export type Config = {
     };
     divisionId: string | undefined;
     releaseVersion: string;
-    selectedDivision?: SelectedDivision;
+    selectedDivision?: Division;
 };
 
+export type InitialConfig = PartialBy<Config, "releaseVersion">;
+
 /**
- * Mapping of theme feature types to their display names.
+ * RELEASES
  */
-export interface ThemeMapping {
-    [key: string]: string;
-}
 
 /**
  * Represents an Overture release with metadata about availability and URLs.
@@ -85,17 +89,6 @@ export interface ReleaseContext {
 }
 
 /**
- * Represents the current progress state of download operations.
- */
-export interface ProgressState {
-    bboxComplete: boolean;
-    geomComplete: boolean;
-    isProcessing: boolean;
-    featureCount: number;
-    diffCount: number | null; // Difference from previous version
-}
-
-/**
  * Complete release data with metadata and array of all releases.
  */
 export type ReleaseData = {
@@ -113,6 +106,29 @@ export type ReleaseData = {
 export type Version = string;
 
 /**
+ * THEMES
+ */
+
+/**
+ * Mapping of theme feature types to their display names.
+ */
+export interface ThemeMapping {
+    [key: string]: string;
+}
+/**
+ * Interface representing theme differences between local mapping and S3 availability.
+ */
+export interface ThemeDifferences {
+    missingFromLocal: string[];
+    missingFromS3: string[];
+    hasDifferences: boolean;
+}
+
+/**
+ * UI
+ */
+
+/**
  * Spinner interface for displaying progress indicators in the CLI.
  */
 export type Spinner = {
@@ -122,13 +138,24 @@ export type Spinner = {
 };
 
 /**
- * Interface representing theme differences between local mapping and S3 availability.
+ * Represents the current progress state of download operations.
  */
-export interface ThemeDifferences {
-    missingFromLocal: string[];
-    missingFromS3: string[];
-    hasDifferences: boolean;
+export interface ProgressState {
+    bboxComplete: boolean;
+    geomComplete: boolean;
+    isProcessing: boolean;
+    featureCount: number;
+    diffCount: number | null; // Difference from previous version
 }
+
+/**
+ * CLI
+ */
+
+/**
+ * Valid modes for how existing files should be handled.
+ */
+export type OnExistingFilesAction = "Skip" | "Replace" | "Abort";
 
 /**
  * Configuration for command-line arguments handling.
@@ -175,3 +202,19 @@ export interface OptionConfig {
     alias?: string;
     group?: string;
 }
+
+/**
+ * SEARCH RESULTS
+ */
+
+export type SearchHistoryItem = {
+    createdAt: string;
+    version: string;
+    adminLevel: number;
+    term: string;
+    totalCount: number;
+    results: Division[];
+    cachePath?: string;
+};
+
+export type SearchHistory = SearchHistoryItem[];
