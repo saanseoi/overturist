@@ -156,3 +156,20 @@ export async function readDirectoryEntries(dirPath: string): Promise<Array<{ nam
         return [];
     }
 }
+
+/**
+ * Checks if a Parquet file exists for a given version and feature type.
+ * @param version - The release version
+ * @param featureType - The feature type to check for
+ * @param config - Configuration object containing output directory
+ * @returns Promise resolving to true if the Parquet file exists
+ */
+export async function isParquetExists(version: Version, featureType: string, config: Config): Promise<boolean> {
+    const versionOutputDir = getOutputDir(config, version);
+    const parquetFile = path.join(versionOutputDir, `${featureType}.parquet`);
+
+    return await fs
+        .access(parquetFile)
+        .then(() => true)
+        .catch(() => false);
+}
