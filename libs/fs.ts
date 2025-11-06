@@ -83,8 +83,8 @@ const CACHE_DIR = path.join(process.cwd(), ".cache");
  * Ensures cache directory exists for a specific version.
  * @param version - The release version
  */
-export async function ensureVersionedCacheDir(version: string): Promise<void> {
-    const versionDir = path.join(CACHE_DIR, version, "division");
+export async function ensureVersionedCacheDir(version: string, subDir?: string): Promise<void> {
+    const versionDir = path.join(CACHE_DIR, version, subDir ? subDir : "");
     await ensureDirectoryExists(versionDir);
 }
 
