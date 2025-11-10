@@ -15,6 +15,7 @@ type PartialBy<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
 export type Division = {
     id: string;
     names: {
+        primary?: string; // Primary name in local language
         common: Array<{ key: string; value: string }>;
     };
     subtype: string;
@@ -137,6 +138,8 @@ export type Spinner = {
     stop: (msg?: string, code?: number) => void;
     message: (msg?: string) => void;
 };
+
+export type DivisionOption = { value: Division | string; label: string; hint: string };
 
 /**
  * Represents the current progress state of download operations.

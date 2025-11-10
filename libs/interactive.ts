@@ -197,7 +197,7 @@ export async function handleDivisionSelection(config: Config): Promise<void> {
         config.selectedDivision = selectedDivision;
 
         // Step 7: Display selection to user
-        displaySelectedDivision(selectedDivision);
+        displaySelectedDivision(selectedDivision, config);
     } catch (error) {
         bailFromSpinner(
             s,
