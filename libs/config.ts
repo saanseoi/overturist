@@ -1,7 +1,8 @@
-import { DEFAULT_XMAX, DEFAULT_XMIN, DEFAULT_YMAX, DEFAULT_YMIN } from "./constants";
+import { DEFAULT_LOCALE, DEFAULT_XMAX, DEFAULT_XMIN, DEFAULT_YMAX, DEFAULT_YMIN } from "./constants";
 import type { CliArgs, InitialConfig } from "./types";
 
 const CONFIG: InitialConfig = {
+    locale: process.env.LOCALE || DEFAULT_LOCALE,
     outputDir: "./data",
     releaseFn: "releases.json",
     releaseUrl: "https://docs.overturemaps.org/release-calendar/",

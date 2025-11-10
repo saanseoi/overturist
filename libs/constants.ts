@@ -48,12 +48,7 @@ export const ADMIN_LEVELS_BY_VERSION = {
     },
 } as const;
 
-/**
- * @deprecated Use getAdminLevels(version) instead.
- * Administrative level options mapped to their subtypes.
- * This is maintained for backward compatibility.
- */
-export const ADMIN_LEVELS = ADMIN_LEVELS_BY_VERSION["2025-09-24.0"];
+export const DEFAULT_LOCALE = "en";
 
 export const DEFAULT_XMIN = -180;
 export const DEFAULT_XMAX = 180;

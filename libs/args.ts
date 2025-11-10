@@ -60,6 +60,12 @@ const options: Record<string, OptionConfig> = {
         alias: "h",
         group: "default",
     },
+    locale: {
+        description: `ISO code for localised names ${kleur.grey("e.g. zh-hk")}`,
+        boolean: false,
+        alias: "l",
+        group: "default",
+    },
 };
 
 const argConfig = {

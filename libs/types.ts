@@ -42,6 +42,7 @@ export type Division = {
  * Configuration object containing application settings and environment variables.
  */
 export type Config = {
+    locale: string;
     outputDir: string;
     releaseFn: string;
     releaseUrl: string;
