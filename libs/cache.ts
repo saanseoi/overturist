@@ -11,6 +11,21 @@ import type { Division, ReleaseData, SearchHistory, SearchHistoryItem, ThemeMapp
 const CACHE_DIR = process.cwd() + "/.cache";
 
 /**
+ * TEMP FILES
+ */
+
+/**
+ * Constructs a cache path for temporary files by replacing the output directory with cache directory.
+ * @param outputFilePath - The original output file path (e.g., "data/v1/country/feature.parquet")
+ * @returns Cache path for temporary file (e.g., ".cache/v1/country/temp_feature.parquet")
+ */
+export function getTempCachePath(outputFilePath: string): string {
+    return outputFilePath
+        .replace(/^[^/]*\/+/, ".cache/") // Replace first directory (e.g., "data/") with ".cache/"
+        .replace(/([^/]+)\.parquet$/, "temp_$1.parquet"); // Replace filename with temp_ prefix
+}
+
+/**
  * HELPER :: PATH
  */
 

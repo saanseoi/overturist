@@ -4,6 +4,17 @@ import kleur from "kleur";
 import type { Spinner } from "./types";
 
 /**
+ * TYPES
+ */
+
+export function getDiffCount(currentCount: number, previousCount: number | null): number | null {
+    if (previousCount === null) {
+        return null; // No previous count available
+    }
+    return currentCount - previousCount;
+}
+
+/**
  * DATETIME
  */
 

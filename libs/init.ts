@@ -4,7 +4,7 @@ import { extractBboxFromDivisionGeometry } from "./processing";
 import { getReleaseContext, initializeReleaseVersion } from "./releases";
 import { initializeThemeMapping } from "./themes";
 import type { Config, InitialConfig, ReleaseContext, ThemeMapping } from "./types";
-import { calculateColumnWidths, displayBanner } from "./ui";
+import { calculateColumnWidths } from "./ui";
 import { setupGracefulExit } from "./utils";
 
 /**

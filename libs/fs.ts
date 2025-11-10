@@ -158,6 +158,18 @@ export async function readDirectoryEntries(dirPath: string): Promise<Array<{ nam
 }
 
 /**
+ * Checks if a file exists at the given path.
+ * @param filePath - Path to the file to check
+ * @returns Promise resolving to true if the file exists
+ */
+export async function fileExists(filePath: string): Promise<boolean> {
+    return await fs
+        .access(filePath)
+        .then(() => true)
+        .catch(() => false);
+}
+
+/**
  * Checks if a Parquet file exists for a given version and feature type.
  * @param version - The release version
  * @param featureType - The feature type to check for
@@ -168,8 +180,5 @@ export async function isParquetExists(version: Version, featureType: string, con
     const versionOutputDir = getOutputDir(config, version);
     const parquetFile = path.join(versionOutputDir, `${featureType}.parquet`);
 
-    return await fs
-        .access(parquetFile)
-        .then(() => true)
-        .catch(() => false);
+    return await fileExists(parquetFile);
 }

@@ -56,7 +56,7 @@ export type Config = {
     divisionId: string | undefined;
     releaseVersion: string;
     selectedDivision?: Division;
-    noClip: undefined | null | "boundary" | "bbox";
+    noClip: undefined | null | "geom" | "bbox";
 };
 
 export type InitialConfig = PartialBy<Config, "releaseVersion">;

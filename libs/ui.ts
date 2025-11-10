@@ -4,10 +4,13 @@ import kleur from "kleur";
 import { getSearchHistory } from "./cache";
 import { DEFAULT_LOCALE } from "./constants";
 import { note } from "./note";
+import { getCount, getLastReleaseCount } from "./queries";
 import { getAdminLevels } from "./releases";
 import type {
+    CliArgs,
     Config,
     Division,
+    InitialConfig,
     OnExistingFilesAction,
     ProgressState,
     ReleaseContext,
@@ -15,7 +18,7 @@ import type {
     ThemeDifferences,
     Version,
 } from "./types";
-import { successExit } from "./utils";
+import { getDiffCount, successExit } from "./utils";
 
 // Local type definition to avoid import issues
 type DivisionOption = { value: Division | string; label: string; hint: string };
@@ -338,6 +341,68 @@ export function updateProgressDisplay(
         `${bboxCol} ${geomCol} ${kleur.white(countText)} ${diffText}`;
 
     process.stdout.write(line);
+}
+
+/**
+ * Handles the skipped feature logic when files already exist.
+ * @param config - Configuration object
+ * @param featureType - Feature type being processed
+ * @param outputFile - Path to the output file
+ * @param index - Index of the feature type
+ * @param featureTypes - Array of all feature types
+ * @param releaseContext - Release context information
+ * @param featureNameWidth - Width for feature name display
+ * @param indexWidth - Width for index display
+ */
+export async function handleSkippedFeature(
+    config: Config,
+    featureType: string,
+    outputFile: string,
+    index: number,
+    featureTypes: string[],
+    releaseContext: ReleaseContext,
+    featureNameWidth: number,
+    indexWidth: number,
+): Promise<void> {
+    let existingCount = 0;
+    try {
+        existingCount = await getCount(outputFile);
+    } catch (_error) {
+        existingCount = 0;
+    }
+
+    // Get previous count for diff display
+    const lastReleaseCount = await getLastReleaseCount(config, featureType, releaseContext);
+    const diffCount = getDiffCount(existingCount, lastReleaseCount);
+    const diffText = toDiffText(diffCount);
+
+    let skippedPrefix: string;
+    const indexNum = index + 1;
+    if (featureTypes.length > 9 && indexNum < 10) {
+        skippedPrefix = kleur.gray(`${indexNum}/${featureTypes.length}`.padStart(indexWidth));
+    } else {
+        skippedPrefix = kleur.gray(`${indexNum}/${featureTypes.length}`.padStart(indexWidth));
+    }
+
+    const skippedProgress = `${kleur.gray("│")}${kleur.white(skippedPrefix)} ${kleur.cyan(featureType.padEnd(featureNameWidth))} ${kleur.gray("│")}  ${kleur.yellow("⏭️".padEnd(6))} ${kleur.yellow("⏭️".padEnd(6))} ${kleur.white(existingCount.toString().padStart(7))} ${diffText}`;
+    console.log(skippedProgress);
+}
+
+/**
+ * Formats diff count with appropriate coloring.
+ * @param diffCount - The difference count to format
+ * @returns Formatted diff text with colors
+ */
+export function toDiffText(diffCount: number | null): string {
+    if (diffCount === null) {
+        return kleur.yellow("NEW".padStart(9));
+    } else if (diffCount === 0) {
+        return kleur.white("-".padStart(9));
+    } else if (diffCount > 0) {
+        return kleur.green(`+${diffCount}`.padStart(9));
+    } else {
+        return kleur.red(diffCount.toString().padStart(9));
+    }
 }
 
 /**
