@@ -1,6 +1,7 @@
 import { log, spinner } from "@clack/prompts";
 import kleur from "kleur";
 import { cacheThemeMapping, getCachedThemeMapping, getVersionsInCache } from "./cache";
+import { handleThemeAction } from "./interactive";
 import { getFeatureTypesForVersion } from "./s3";
 import type { ReleaseData, ThemeMapping, Version } from "./types";
 import { bailFromSpinner } from "./utils";
@@ -331,14 +332,4 @@ async function promptUserForThemeAction(differences: any): Promise<any> {
     // This function should be imported from ui.ts to avoid circular dependencies
     const { promptUserForThemeAction } = await import("./ui");
     return promptUserForThemeAction(differences);
-}
-
-/**
- * Handles theme action based on user choice.
- * This function should be imported from ui.ts when needed.
- */
-async function handleThemeAction(action: any, s3FeatureTypes: any, version: string): Promise<ThemeMapping | null> {
-    // This function should be imported from ui.ts to avoid circular dependencies
-    const { handleThemeAction } = await import("./ui");
-    return handleThemeAction(action, s3FeatureTypes, version);
 }

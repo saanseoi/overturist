@@ -1,4 +1,4 @@
-import { outro, spinner } from "@clack/prompts";
+import { log, outro, spinner } from "@clack/prompts";
 import kleur from "kleur";
 import { getCachedSearchResults } from "./cache";
 import { checkForExistingFiles } from "./fs";
@@ -6,6 +6,7 @@ import { initialize } from "./init";
 import { processFeatures, searchDivisions } from "./processing";
 import { getAdminLevels } from "./releases";
 import { getS3Releases } from "./s3";
+import { updateThemeMappingFromS3 } from "./themes";
 import type {
     CliArgs,
     Config,
@@ -27,9 +28,9 @@ import {
     promptForMainAction,
     promptForSearchHistory,
     promptForSettingsAction,
-    selectHistoricVersion,
+    selectReleaseVersion,
 } from "./ui";
-import { bail, bailFromSpinner } from "./utils";
+import { bail, bailFromSpinner, successExit } from "./utils";
 
 /**
  * MENUS
@@ -66,7 +67,7 @@ export async function handleMainMenu(CONFIG: InitialConfig, cliArgs: CliArgs) {
 
             case "download_historic": {
                 const { s3Releases } = await getS3Releases();
-                const historicVersion = await selectHistoricVersion(s3Releases, s3Releases[0]);
+                const historicVersion = await selectReleaseVersion(s3Releases, s3Releases[0]);
 
                 if (!historicVersion) {
                     continue; // User cancelled
@@ -370,5 +371,30 @@ async function handleRepeatSearchWorkflow(config: InitialConfig, cliArgs: CliArg
 
     if (!completed) {
         return;
+    }
+}
+
+/**
+ * Handles the user's chosen action for theme differences.
+ * @param action - User's chosen action
+ * @param s3FeatureTypes - Feature types available on S3
+ * @param version - Release version to cache the theme mapping for
+ */
+export async function handleThemeAction(
+    action: "update" | "ignore" | "cancel",
+    s3FeatureTypes: { [theme: string]: string[] },
+    version: string,
+): Promise<ThemeMapping | null> {
+    switch (action) {
+        case "cancel":
+            successExit("❌ User said no.");
+            break;
+
+        case "ignore":
+            log.warn(kleur.yellow("Proceeding with existing theme mapping"));
+            return null;
+
+        case "update":
+            return await updateThemeMappingFromS3(s3FeatureTypes, version);
     }
 }
