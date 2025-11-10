@@ -56,6 +56,7 @@ export type Config = {
     divisionId: string | undefined;
     releaseVersion: string;
     selectedDivision?: Division;
+    noClip: undefined | null | "boundary" | "bbox";
 };
 
 export type InitialConfig = PartialBy<Config, "releaseVersion">;
@@ -177,6 +178,8 @@ export interface CliArgs {
         xmax: number;
         ymax: number;
     };
+    noClipGeom?: boolean;
+    noClipBbox?: boolean;
     get?: boolean;
 }
 
@@ -185,6 +188,8 @@ export type ParsedArgs = {
     get?: boolean;
     help?: boolean;
     examples?: boolean;
+    "no-clip-geom"?: boolean;
+    "no-clip-bbox"?: boolean;
     skip?: boolean;
     replace?: boolean;
     abort?: boolean;

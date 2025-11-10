@@ -2,10 +2,8 @@
 import kleur from "kleur";
 import { handleArguments } from "./libs/args";
 import { getCmd } from "./libs/commands";
-import { applyArgs, getConfig } from "./libs/config";
+import { getConfig } from "./libs/config";
 import { handleMainMenu } from "./libs/interactive";
-
-const CONFIG = getConfig();
 
 /**
  * CLI entry point for Overturist.
@@ -27,8 +25,8 @@ async function main() {
     // Parse arguments and show examples or help if required
     const cliArgs = handleArguments();
 
-    // Apply CLI arguments to configuration (overrides environment variables and defaults)
-    applyArgs(CONFIG, cliArgs);
+    // Get configuration with CLI arguments applied
+    const CONFIG = getConfig(cliArgs);
 
     // If get command is used, run in non-interactive mode
     if (cliArgs.get) {

@@ -34,6 +34,16 @@ const options: Record<string, OptionConfig> = {
         boolean: false,
         group: "Geospatial",
     },
+    "no-clip-geom": {
+        description: "Do not clip results to division boundary geometry",
+        boolean: true,
+        group: "Geospatial",
+    },
+    "no-clip-bbox": {
+        description: `Do not clip results to bbox ${kleur.red("NOT IMPLEMENTED")}`,
+        boolean: true,
+        group: "Geospatial",
+    },
     skip: {
         description: `Skip downloads if files exist ${kleur.grey("(default)")}`,
         boolean: true,
@@ -111,6 +121,8 @@ export function handleArguments(): CliArgs {
         divisionId,
         releaseVersion,
         bbox,
+        noClipGeom: args["no-clip-geom"],
+        noClipBbox: args["no-clip-bbox"],
         get: isGetPositionalGet,
     };
 }
@@ -249,6 +261,14 @@ export function displayExamples() {
                 {
                     command: "--bbox -71.0,42.3,-71.1,42.4",
                     description: "All features will fall within this bounding box (west, south, east, north)",
+                },
+                {
+                    command: "--no-clip-geom",
+                    description: "Skip boundary geometry, rely solely on bbox for results filtering",
+                },
+                {
+                    command: "--no-clip-bbox",
+                    description: "Download full dataset - UNIMPLEMENTED",
                 },
             ],
         },

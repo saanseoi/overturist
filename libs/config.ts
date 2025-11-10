@@ -1,61 +1,128 @@
 import { DEFAULT_LOCALE, DEFAULT_XMAX, DEFAULT_XMIN, DEFAULT_YMAX, DEFAULT_YMIN } from "./constants";
 import type { CliArgs, InitialConfig } from "./types";
+import { displayConfigWarnings } from "./ui";
 
 const CONFIG: InitialConfig = {
-    locale: process.env.LOCALE || DEFAULT_LOCALE,
+    locale: DEFAULT_LOCALE,
     outputDir: "./data",
     releaseFn: "releases.json",
     releaseUrl: "https://docs.overturemaps.org/release-calendar/",
     bbox: {
-        xmin: process.env.BBOX_XMIN ? parseFloat(process.env.BBOX_XMIN) : DEFAULT_XMIN,
-        ymin: process.env.BBOX_YMIN ? parseFloat(process.env.BBOX_YMIN) : DEFAULT_YMIN,
-        xmax: process.env.BBOX_XMAX ? parseFloat(process.env.BBOX_XMAX) : DEFAULT_XMAX,
-        ymax: process.env.BBOX_YMAX ? parseFloat(process.env.BBOX_YMAX) : DEFAULT_YMAX,
-    },
-    divisionId: process.env.DIVISION_ID || undefined,
-};
-
-/**
- * Returns the application configuration object with environment variables and defaults.
- * @returns Config object containing all application settings
- */
-export function getConfig(): InitialConfig {
-    return CONFIG;
-}
-
-/**
- * Applies CLI arguments to the configuration object, overriding environment variables and defaults.
- * @param config - The configuration object to update
- * @param args - The CLI arguments to apply
- */
-export function applyArgs(config: InitialConfig, args: CliArgs): void {
-    // Override division ID if provided via CLI
-    if (args.divisionId) {
-        config.divisionId = args.divisionId;
-    }
-
-    // Override bbox if provided via CLI
-    if (args.bbox) {
-        config.bbox = args.bbox;
-    }
-}
-
-/**
- * Reloads configuration from environment variables and applies CLI args.
- * This is called after resetting preferences to ensure proper fallback to reloaded env vars.
- * @param config - The configuration object to update
- * @param cliArgs - The CLI arguments to reapply
- */
-export function reloadConfig(config: InitialConfig, cliArgs: CliArgs): void {
-    // Reload environment variables into config
-    config.bbox = {
         xmin: DEFAULT_XMIN,
         ymin: DEFAULT_YMIN,
         xmax: DEFAULT_XMAX,
         ymax: DEFAULT_YMAX,
-    };
-    config.divisionId = undefined;
+    },
+    divisionId: undefined,
+    noClip: undefined,
+};
 
-    // Reapply CLI args (they will override environment variables if present)
-    applyArgs(config, cliArgs);
+/**
+ * Applies environment variables to a configuration object if they are defined.
+ * @param config - The configuration object to update
+ * @returns The updated configuration object
+ */
+function applyEnvVars(config: InitialConfig): InitialConfig {
+    const updatedConfig = { ...config };
+
+    // Apply locale if defined
+    if (process.env.LOCALE) {
+        updatedConfig.locale = process.env.LOCALE;
+    }
+
+    // Apply bbox coordinates if defined
+    if (process.env.BBOX_XMIN !== undefined) {
+        updatedConfig.bbox.xmin = parseFloat(process.env.BBOX_XMIN);
+    }
+    if (process.env.BBOX_YMIN !== undefined) {
+        updatedConfig.bbox.ymin = parseFloat(process.env.BBOX_YMIN);
+    }
+    if (process.env.BBOX_XMAX !== undefined) {
+        updatedConfig.bbox.xmax = parseFloat(process.env.BBOX_XMAX);
+    }
+    if (process.env.BBOX_YMAX !== undefined) {
+        updatedConfig.bbox.ymax = parseFloat(process.env.BBOX_YMAX);
+    }
+
+    // Apply division ID if defined
+    if (process.env.DIVISION_ID) {
+        updatedConfig.divisionId = process.env.DIVISION_ID;
+    }
+
+    // Apply noClip environment variables
+    // NO_CLIP_BBOX takes precedence over NO_CLIP_BOUNDARY
+    if (process.env.NO_CLIP_BBOX === "1") {
+        updatedConfig.noClip = "bbox";
+    } else if (process.env.NO_CLIP_BOUNDARY === "1") {
+        updatedConfig.noClip = "boundary";
+    }
+
+    return updatedConfig;
+}
+
+/**
+ * Applies CLI arguments to a configuration object if they are defined.
+ * CLI arguments take precedence over environment variables and defaults.
+ * @param config - The configuration object to update
+ * @param cliArgs - The CLI arguments to apply
+ * @returns The updated configuration object
+ */
+function applyCliArgs(config: InitialConfig, cliArgs: Partial<CliArgs>): InitialConfig {
+    const updatedConfig = { ...config };
+
+    // Apply division ID if provided via CLI
+    if (cliArgs.divisionId) {
+        updatedConfig.divisionId = cliArgs.divisionId;
+    }
+
+    // Apply bbox if provided via CLI
+    if (cliArgs.bbox) {
+        updatedConfig.bbox = cliArgs.bbox;
+    }
+
+    // Apply noClip CLI arguments
+    // NO_CLIP_BBOX takes precedence over NO_CLIP_BOUNDARY
+    if (cliArgs.noClipBbox) {
+        updatedConfig.noClip = "bbox";
+    } else if (cliArgs.noClipGeom) {
+        updatedConfig.noClip = "boundary";
+    }
+
+    return updatedConfig;
+}
+
+/**
+ * Returns the application configuration object with defaults, environment variables, and CLI arguments applied.
+ * @param cliArgs - Optional CLI arguments to merge with environment config
+ * @param ignoreEnv - If true, skip applying environment variables (defaults only)
+ * @returns Config object containing all application settings
+ */
+export function getConfig(cliArgs?: Partial<CliArgs>, ignoreEnv: boolean = false): InitialConfig {
+    let config = { ...CONFIG };
+
+    // Apply environment variables if not ignored
+    if (!ignoreEnv) {
+        config = applyEnvVars(config);
+    }
+
+    // Apply CLI arguments if provided (takes precedence over environment variables and defaults)
+    if (cliArgs) {
+        config = applyCliArgs(config, cliArgs);
+    }
+
+    // Display configuration warnings
+    displayConfigWarnings(CONFIG, cliArgs);
+
+    return config;
+}
+
+/**
+ * Reloads configuration respecting CLI args, but ignoring environment variables
+ * This is called after resetting preferences to ensure proper fallback to defaulted env vars.
+ * @param config - The configuration object to update
+ * @param cliArgs - The CLI arguments to reapply
+ */
+export function reloadConfig(config: InitialConfig, cliArgs: CliArgs): void {
+    const freshConfig = getConfig(cliArgs, true);
+    Object.assign(config, freshConfig);
 }
