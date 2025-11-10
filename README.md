@@ -42,6 +42,7 @@ bun install
 Overturist supports two distinct modes:
 
 ### Interactive Mode (Default)
+
 For guided use, searching administrative divisions, and browsing available releases:
 
 ```bash
@@ -49,6 +50,7 @@ bun overturist.ts
 ```
 
 ### Non-Interactive Mode (Scripting)
+
 For automation, CI/CD pipelines, and scripting:
 
 ```bash
@@ -60,30 +62,40 @@ bun overturist.ts get [OPTIONS]
 ### Command Line Options
 
 #### Download Options
-| Option       | Alias | Description                                               |
-| ------------ | ----- | --------------------------------------------------------- |
-| `--release`  | `-r`  | Download specific release version (e.g., 2025-10-22.0)    |
-| `--theme`    | `-T`  | Download only specific themes (repeatable)                 |
-| `--type`     | `-t`  | Download only specific feature types (repeatable)          |
+
+| Option      | Alias | Description                                            |
+| ----------- | ----- | ------------------------------------------------------ |
+| `--release` | `-r`  | Download specific release version (e.g., 2025-10-22.0) |
+| `--theme`   | `-T`  | Download only specific themes (repeatable)             |
+| `--type`    | `-t`  | Download only specific feature types (repeatable)      |
 
 #### Geographic Selection
-| Option       | Alias | Description                                               |
-| ------------ | ----- | --------------------------------------------------------- |
-| `--division` | `-d`  | Filter results by division's boundaries                    |
-| `--bbox`     | `-b`  | Filter results by bounding box (e.g., -71.068,42.353,-71.058,42.363) |
+
+| Option           | Alias | Description                                                                    |
+| ---------------- | ----- | ------------------------------------------------------------------------------ |
+| `--division`     | `-d`  | Filter results by division's boundaries                                        |
+| `--bbox`         | `-b`  | Filter results by bounding box (e.g., -71.068,42.353,-71.058,42.363)           |
+| `--no-clip-geom` | -     | Do not clip results to division boundary geometry                              |
+| `--no-clip-bbox` | -     | Do not clip results to bbox (i.e. download full dataset - NOT IMPLEMENTED)     |
 
 #### File Handling
-| Option       | Alias | Description                                               |
-| ------------ | ----- | --------------------------------------------------------- |
-| `--skip`     | -     | Skip existing files and download missing ones (default)   |
-| `--replace`  | -     | Replace existing files with fresh downloads               |
-| `--abort`    | -     | Exit if existing files are found                          |
+
+| Option      | Alias | Description                                             |
+| ----------- | ----- | ------------------------------------------------------- |
+| `--skip`    | -     | Skip existing files and download missing ones (default) |
+| `--replace` | -     | Replace existing files with fresh downloads             |
+| `--abort`   | -     | Exit if existing files are found                        |
 
 #### Help
-| Option       | Alias | Description                                               |
-| ------------ | ----- | --------------------------------------------------------- |
-| `--examples` | `-x`  | Show detailed usage examples                              |
-| `--help`     | `-h`  | Show help message                                         |
+
+| Option       | Alias | Description                  |
+| ------------ | ----- | ---------------------------- |
+| `--examples` | `-x`  | Show detailed usage examples |
+| `--help`     | `-h`  | Show help message            |
+
+### Environment Variables
+
+You can also configure behavior using environment variables in a `.env` file. The available variables are documented in `.env.example`.
 
 ### Examples
 
@@ -117,6 +129,9 @@ bun overturistist get --division <id> --replace
 
 # Download within bounding box
 bun overturistist get --division <id> --bbox -71.068,42.353,-71.058,42.363
+
+# Result will be a rectangle intersecting with bbox instead of clipped geometry
+bun overturistist get --division <id> --no-clip-geom
 
 # Complex example with multiple options
 bun overturistist get \
@@ -197,7 +212,7 @@ The tool handles file conflicts based on the selected strategy.
 
 ## Configuration
 
-The tool reads configuration from multiple sources (in order of priority):
+**See `--help` for available options**. The tool reads configuration from multiple sources (in order of priority):
 
 1. **Command-line options** (highest priority):
    - `--division`: Override division ID for the target region
@@ -213,7 +228,6 @@ The tool reads configuration from multiple sources (in order of priority):
    - Release calendar URL: [Overture Maps official release calendar](https://docs.overturemaps.org/release-calendar/)
 
 **Note**: Bounding box configuration is optional. If not provided via environment variables or CLI options, you can search for administrative divisions interactively and the tool will use the division's boundaries.
-
 
 ## Caching
 
@@ -242,6 +256,7 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 ## Roadmap to V1
 
 - [ ] Select Themes interactively
+- [ ] Download the whole world
 
 ## Contributing
 
