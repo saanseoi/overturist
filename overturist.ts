@@ -3,7 +3,7 @@ import kleur from "kleur";
 import { handleArguments } from "./libs/args";
 import { getCmd } from "./libs/commands";
 import { applyArgs, getConfig } from "./libs/config";
-import { runInteractiveMode } from "./libs/interactive";
+import { handleMainMenu } from "./libs/interactive";
 
 const CONFIG = getConfig();
 
@@ -37,7 +37,7 @@ async function main() {
     }
 
     // Interactive mode
-    await runInteractiveMode(CONFIG, cliArgs);
+    await handleMainMenu(CONFIG, cliArgs);
 }
 
 main().catch((e) => {

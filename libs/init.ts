@@ -1,5 +1,6 @@
 import { ensureDirectoryExists, getOutputDir } from "./fs";
 import { handleDivisionSelection } from "./interactive";
+import { extractBboxFromDivisionGeometry } from "./processing";
 import { getReleaseContext, initializeReleaseVersion } from "./releases";
 import { initializeThemeMapping } from "./themes";
 import type { Config, InitialConfig, ReleaseContext, ThemeMapping } from "./types";
@@ -25,7 +26,6 @@ export async function initialize(
     outputDir: string;
 }> {
     setupGracefulExit();
-    displayBanner();
 
     // RELEASE VERSION
 
@@ -48,6 +48,11 @@ export async function initialize(
     // Division selection workflow - skip if DIVISION_ID is provided
     if (!config.divisionId) {
         await handleDivisionSelection(config as Config);
+    }
+
+    // Always extract bbox from division geometry after division is set up
+    if (config.divisionId) {
+        await extractBboxFromDivisionGeometry(config as Config, config.divisionId);
     }
 
     const outputDir = getOutputDir(config as Config, config.releaseVersion);
