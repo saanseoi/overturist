@@ -26,7 +26,7 @@ async function main() {
     const cliArgs = handleArguments();
 
     // Get configuration with CLI arguments applied
-    const CONFIG = getConfig(cliArgs);
+    const CONFIG = getConfig();
 
     // If get command is used, run in non-interactive mode
     if (cliArgs.get) {
