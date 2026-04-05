@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
-import kleur from "kleur";
-import { handleArguments } from "./libs/args";
-import { getCmd } from "./libs/commands";
-import { getConfig } from "./libs/config";
-import { handleMainMenu } from "./libs/interactive";
+import kleur from 'kleur'
+import { handleArguments } from './libs/args'
+import { getConfig } from './libs/config'
+import { getCmd } from './libs/get'
+import { handleMainMenu } from './libs/interactive'
 
 /**
  * CLI entry point for Overturist.
@@ -22,28 +22,28 @@ import { handleMainMenu } from "./libs/interactive";
  * @throws Will exit with code 1 if release context cannot be determined or if unexpected errors occur
  */
 async function main() {
-    // Parse arguments and show examples or help if required
-    const cliArgs = handleArguments();
+  // Parse arguments and show examples or help if required
+  const cliArgs = handleArguments()
 
-    // Get configuration with CLI arguments applied
-    const CONFIG = getConfig();
+  // Get configuration with CLI arguments applied
+  const CONFIG = getConfig()
 
-    // If get command is used, run in non-interactive mode
-    if (cliArgs.get) {
-        await getCmd(CONFIG, cliArgs);
-        return;
-    }
+  // If get command is used, run in non-interactive mode
+  if (cliArgs.get) {
+    await getCmd(CONFIG, cliArgs)
+    return
+  }
 
-    // Interactive mode
-    await handleMainMenu(CONFIG, cliArgs);
+  // Interactive mode
+  await handleMainMenu(CONFIG, cliArgs)
 }
 
-main().catch((e) => {
-    if (e instanceof Error) {
-        console.error(kleur.red(`✖ ${e.message}`));
-    } else {
-        console.error(kleur.red("An unexpected error occurred:"));
-        console.error(e);
-    }
-    process.exit(1);
-});
+main().catch(e => {
+  if (e instanceof Error) {
+    console.error(kleur.red(`✖ ${e.message}`))
+  } else {
+    console.error(kleur.red('An unexpected error occurred:'))
+    console.error(e)
+  }
+  process.exit(1)
+})
