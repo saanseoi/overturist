@@ -1,178 +1,254 @@
-import { DEFAULT_LOCALE, DEFAULT_XMAX, DEFAULT_XMIN, DEFAULT_YMAX, DEFAULT_YMIN } from "./constants";
-import type { CliArgs, InitialConfig } from "./types";
+import { log } from '@clack/prompts'
+import kleur from 'kleur'
+import { DEFAULT_LOCALE, DEFAULT_ON_FILE_EXISTS, DEFAULT_TARGET } from './constants'
+import { extractBoundsFromDivisionGeometry } from './processing'
+import type {
+  BBox,
+  CliArgs,
+  Config,
+  Division,
+  Geometry,
+  InteractiveOptions,
+  OnExistingFilesAction,
+  Target,
+  Version,
+} from './types'
+import { bail } from './utils'
 
-const CONFIG: InitialConfig = {
-    locale: DEFAULT_LOCALE,
-    outputDir: "./data",
-    releaseFn: "releases.json",
-    releaseUrl: "https://docs.overturemaps.org/release-calendar/",
-    bbox: {
-        xmin: DEFAULT_XMIN,
-        ymin: DEFAULT_YMIN,
-        xmax: DEFAULT_XMAX,
-        ymax: DEFAULT_YMAX,
-    },
-    divisionId: undefined,
-    noClip: undefined,
-};
-
+const CONFIG: Config = {
+  locale: DEFAULT_LOCALE,
+  outputDir: './data',
+  releaseFn: 'releases.json',
+  releaseUrl: 'https://docs.overturemaps.org/release-calendar/',
+  target: DEFAULT_TARGET,
+  bbox: undefined,
+  divisionId: undefined,
+  noClip: undefined,
+  onFileExists: undefined,
+}
 /**
  * Applies environment variables to a configuration object if they are defined.
  * @param config - The configuration object to update
  * @returns The updated configuration object
  */
-function applyEnvVars(config: InitialConfig): InitialConfig {
-    const updatedConfig = { ...config };
+function applyEnvVars(config: Config): Config {
+  const updatedConfig = { ...config }
 
-    // Apply locale if defined
-    if (process.env.LOCALE) {
-        updatedConfig.locale = process.env.LOCALE;
-    }
+  // Apply download target if defined
+  if (process.env.TARGET) {
+    updatedConfig.target = validateTarget(process.env.TARGET)
+  }
 
-    // Apply bbox coordinates if defined
-    if (process.env.BBOX_XMIN !== undefined) {
-        updatedConfig.bbox.xmin = parseFloat(process.env.BBOX_XMIN);
-    }
-    if (process.env.BBOX_YMIN !== undefined) {
-        updatedConfig.bbox.ymin = parseFloat(process.env.BBOX_YMIN);
-    }
-    if (process.env.BBOX_XMAX !== undefined) {
-        updatedConfig.bbox.xmax = parseFloat(process.env.BBOX_XMAX);
-    }
-    if (process.env.BBOX_YMAX !== undefined) {
-        updatedConfig.bbox.ymax = parseFloat(process.env.BBOX_YMAX);
-    }
+  // Apply locale if defined
+  if (process.env.LOCALE) {
+    updatedConfig.locale = process.env.LOCALE
+  }
 
-    // Apply division ID if defined
-    if (process.env.DIVISION_ID) {
-        updatedConfig.divisionId = process.env.DIVISION_ID;
+  // Apply bbox coordinates only if ALL are defined
+  if (
+    process.env.BBOX_XMIN !== undefined &&
+    process.env.BBOX_YMIN !== undefined &&
+    process.env.BBOX_XMAX !== undefined &&
+    process.env.BBOX_YMAX !== undefined
+  ) {
+    updatedConfig.bbox = {
+      xmin: parseFloat(process.env.BBOX_XMIN),
+      ymin: parseFloat(process.env.BBOX_YMIN),
+      xmax: parseFloat(process.env.BBOX_XMAX),
+      ymax: parseFloat(process.env.BBOX_YMAX),
     }
+  }
 
-    // Apply noClip environment variables
-    // NO_CLIP_BBOX takes precedence over NO_CLIP_GEOM
-    if (process.env.NO_CLIP_BBOX === "1") {
-        updatedConfig.noClip = "bbox";
-    } else if (process.env.NO_CLIP_GEOM === "1") {
-        updatedConfig.noClip = "geom";
-    }
+  // Apply division ID if defined
+  if (process.env.DIVISION_ID) {
+    updatedConfig.divisionId = process.env.DIVISION_ID
+  }
 
-    return updatedConfig;
-}
+  // Apply noClip environment variables
+  // NO_CLIP_BBOX takes precedence over NO_CLIP_GEOM
+  if (process.env.NO_CLIP === '1') {
+    updatedConfig.noClip = true
+  } else if (process.env.NO_CLIP === '0') {
+    updatedConfig.noClip = false
+  }
 
-/**
- * Applies CLI arguments to a configuration object if they are defined.
- * CLI arguments take precedence over environment variables and defaults.
- * @param config - The configuration object to update
- * @param cliArgs - The CLI arguments to apply
- * @returns The updated configuration object
- */
-function applyCliArgs(config: InitialConfig, cliArgs: Partial<CliArgs>): InitialConfig {
-    const updatedConfig = { ...config };
+  // Apply featureTypes
+  if (process.env.FEATURE_TYPES) {
+    updatedConfig.featureTypes = process.env.FEATURE_TYPES.split(',')
+  }
 
-    // Apply division ID if provided via CLI
-    if (cliArgs.divisionId) {
-        updatedConfig.divisionId = cliArgs.divisionId;
-    }
+  // Apply onFileExists
+  if (process.env.ON_FILE_EXISTS) {
+    updatedConfig.onFileExists = validateOnFileExists(process.env.ON_FILE_EXISTS)
+  }
 
-    // Apply bbox if provided via CLI
-    if (cliArgs.bbox) {
-        updatedConfig.bbox = cliArgs.bbox;
-    }
-
-    // Apply noClip CLI arguments
-    // NO_CLIP_BBOX takes precedence over NO_CLIP_GEOM
-    if (cliArgs.noClipBbox) {
-        updatedConfig.noClip = "bbox";
-    } else if (cliArgs.noClipGeom) {
-        updatedConfig.noClip = "geom";
-    }
-
-    return updatedConfig;
+  return updatedConfig
 }
 
 /**
  * Returns the application configuration object with defaults, environment variables, and CLI arguments applied.
- * @param cliArgs - Optional CLI arguments to merge with environment config
- * @param ignoreEnv - If true, skip applying environment variables (defaults only)
+ * @param ignoreEnv - If true, skip applying environment variables and return defaults only
  * @returns Config object containing all application settings
+ * @remarks CLI overrides are applied later by the runtime initializers, not in this function.
  */
-export function getConfig(cliArgs?: Partial<CliArgs>, ignoreEnv: boolean = false): InitialConfig {
-    let config = { ...CONFIG };
+export function getConfig(ignoreEnv: boolean = false): Config {
+  let config = { ...CONFIG }
 
-    // Apply environment variables if not ignored
-    if (!ignoreEnv) {
-        config = applyEnvVars(config);
-    }
+  // Apply environment variables if not ignored
+  if (!ignoreEnv) {
+    config = applyEnvVars(config)
+  }
 
-    // Apply CLI arguments if provided (takes precedence over environment variables and defaults)
-    if (cliArgs) {
-        config = applyCliArgs(config, cliArgs);
-    }
+  return config
+}
 
-    // Validate and adjust configuration based on compatibility rules
-    config = validateConfig(config, cliArgs);
+export function validateTarget(target: string | undefined): Target {
+  const validTargets = ['division', 'bbox', 'world']
+  if (target && !validTargets.includes(target)) {
+    bail(`Invalid target: ${target} ${kleur.grey(`- use ${validTargets.join(', ')}`)}`)
+  } else if (target && validTargets.includes(target)) {
+    return target as Target
+  }
+  return DEFAULT_TARGET
+}
 
-    return config;
+export function validateOnFileExists(
+  action: string | undefined,
+): OnExistingFilesAction {
+  const validOnFileExists = ['skip', 'replace', 'abort']
+  if (action && !validOnFileExists.includes(action)) {
+    bail(
+      `Invalid OnFileExists: ${action} ${kleur.grey(`- use ${validOnFileExists.join(', ')}`)}`,
+    )
+  } else if (action && validOnFileExists.includes(action)) {
+    return action as OnExistingFilesAction
+  }
+  return DEFAULT_ON_FILE_EXISTS
 }
 
 /**
- * Validates and adjusts configuration based on compatibility rules.
- * @param config - The configuration object to validate
- * @param cliArgs - The CLI arguments that were applied
- * @returns The potentially modified configuration object
+ * Reloads configuration defaults while ignoring environment variables.
+ * @param config - The live configuration object to refresh in place
+ * @returns Nothing. Mutates the provided config object.
+ * @remarks This is used after resetting preferences to restore default values only.
  */
-export function validateConfig(config: InitialConfig, cliArgs?: Partial<CliArgs>): InitialConfig {
-    const validatedConfig = { ...config };
-    const { log } = require("@clack/prompts");
-    const kleur = require("kleur");
+export function reloadConfig(config: Config): void {
+  const freshConfig = getConfig(true)
+  Object.assign(config, freshConfig)
+}
 
-    // Handle noClip="bbox" conflicts with divisionId
-    if (validatedConfig.noClip === "bbox" && validatedConfig.divisionId) {
-        const wasCliNoClipGeom = cliArgs?.noClipGeom;
-        const wasEnvNoClipGeom = process.env.NO_CLIP_GEOM === "1";
+// LOCALE
+/**
+ * Initializes the locale based on configuration and CLI arguments.
+ * @param config - The configuration object.
+ * @param cliArgs - The CLI arguments.
+ * @returns The initialized locale.
+ */
+export function initializeLocale(config: Config, cliArgs: CliArgs): { locale: string } {
+  let locale = DEFAULT_LOCALE
+  if (cliArgs.locale) {
+    locale = cliArgs.locale
+  } else if (config.locale) {
+    locale = config.locale
+  }
+  return { locale }
+}
 
-        if (wasCliNoClipGeom || wasEnvNoClipGeom) {
-            // Adapt to "boundary" mode if boundary clipping was requested
-            validatedConfig.noClip = "geom";
-            log.warn(kleur.yellow("⚠️  Adjusted NO_CLIP_BBOX to NO_CLIP_GEOM due to DIVISION_ID conflict"));
-            log.info(
-                kleur.gray("   Results will be filtered by the Division BBox and boundary geometry will be ignored"),
-            );
-        } else {
-            // Fall back to undefined (enable both bbox and boundary clipping)
-            validatedConfig.noClip = undefined;
-            log.warn(kleur.yellow("⚠️  NO_CLIP_BBOX is ignored when DIVISION_ID is set"));
-            log.info(kleur.gray("   Both bbox and boundary filtering will be applied"));
-        }
-    }
+export function initializeTarget(
+  config: Config,
+  cliArgs: CliArgs,
+  interactiveOpts?: InteractiveOptions | false,
+): { target: Target } {
+  // Resolve the requested target from interactive input, CLI overrides, then config defaults.
+  const target =
+    (interactiveOpts as InteractiveOptions | undefined)?.target ||
+    cliArgs.target ||
+    config.target
 
-    // Handle noClip="bbox" conflicts with BBOX_* environment variables
-    const hasBboxEnvVars =
-        process.env.BBOX_XMIN || process.env.BBOX_YMIN || process.env.BBOX_XMAX || process.env.BBOX_YMAX;
-    if (validatedConfig.noClip === "bbox" && hasBboxEnvVars) {
-        validatedConfig.noClip = undefined;
-        log.warn(kleur.yellow("⚠️  NO_CLIP_BBOX will be ignored when BBOX_* variables are set"));
-        log.info(kleur.gray("   Bbox filtering will still be applied"));
-    }
-
-    // Warn if both NO_CLIP_BBOX and NO_CLIP_BOUNDARY are set
-    const noClipBboxEnv = process.env.NO_CLIP_BBOX === "1";
-    const noClipBoundaryEnv = process.env.NO_CLIP_BOUNDARY === "1";
-    if (noClipBboxEnv && noClipBoundaryEnv) {
-        log.info(kleur.blue("ℹ️  Both NO_CLIP_BBOX and NO_CLIP_BOUNDARY detected"));
-        log.info(kleur.gray("   NO_CLIP_BBOX takes precedence"));
-    }
-
-    return validatedConfig;
+  return { target: validateTargetConfig(config, cliArgs, target) }
 }
 
 /**
- * Reloads configuration respecting CLI args, but ignoring environment variables
- * This is called after resetting preferences to ensure proper fallback to defaulted env vars.
- * @param config - The configuration object to update
- * @param cliArgs - The CLI arguments to reapply
+ * Normalizes target selection when mutually exclusive location inputs are present.
+ * @param config - Configuration object with environment-derived defaults
+ * @param cliArgs - Parsed CLI arguments for the current invocation
+ * @param target - Initially selected target before precedence rules are applied
+ * @returns Final target after resolving division and bbox precedence
+ * @remarks Division and bbox inputs override `world` so location-specific filtering is preserved.
  */
-export function reloadConfig(config: InitialConfig, cliArgs: CliArgs): void {
-    const freshConfig = getConfig(cliArgs, true);
-    Object.assign(config, freshConfig);
+export function validateTargetConfig(
+  config: Config,
+  cliArgs: CliArgs,
+  target: Target,
+): Target {
+  // CASE 1 : target=world AND dividionId - dividionId takes precedence over target=world
+  const hasDivisionId = cliArgs.divisionId || config.divisionId || false
+  const isTargetWorld = target === 'world'
+  if (isTargetWorld && hasDivisionId) {
+    log.warn(kleur.yellow('⚠️  Target=world is ignored when DivisionId is set'))
+    log.info(kleur.gray('   Search will look for the specified Division'))
+    return 'division'
+  }
+  // CASE 2 : target=world AND BBox - BBox takes precedence over target=world
+  const hasBBoxDefined = cliArgs.bbox || config.bbox || false
+  if (isTargetWorld && hasBBoxDefined) {
+    log.warn(kleur.yellow('⚠️  Target=world is ignored when BBox is set'))
+    log.info(kleur.gray('   Search will look for the specified bounding box'))
+    return 'bbox'
+  }
+  // DEFAULT CASE
+  return target
+}
+
+/**
+ * Initializes the bounding box based on configuration and CLI arguments.
+ * @param config - The configuration object.
+ * @param cliArgs - The CLI arguments.
+ * @param interactiveOpts - The interactive options.
+ * @returns The initialized bounding box.
+ */
+export async function initializeBounds(
+  config: Config,
+  cliArgs: CliArgs,
+  target: Target,
+  division: Division | null,
+  divisionId: string | null,
+  releaseVersion: Version,
+): Promise<{ bbox: BBox | null; noClip: boolean; geometry: Geometry | null }> {
+  // WORLD TARGET
+  if (target === 'world') {
+    // Download world geometry
+    return { bbox: null, noClip: true, geometry: null }
+  }
+  // Determine clipping behavior based on config
+  const noClip = cliArgs.noClip || config.noClip || false
+  const bbox = cliArgs.bbox || config.bbox
+  // BBOX MODE
+  if (target === 'bbox' && !bbox) {
+    bail('You must provide a bounding box if you are using the bbox target')
+  } else if (target === 'bbox' && bbox) {
+    // Download bbox geometry
+    return { bbox: bbox, noClip: true, geometry: null }
+    // DIVISION TARGET
+  } else if (target === 'division' && !division) {
+    // This should never run
+    bail('You must provide a DivisionId if you are using the division target')
+  } else {
+    // Extract bounds from division geometry
+    const bounds = await extractBoundsFromDivisionGeometry(
+      releaseVersion,
+      division,
+      divisionId,
+    )
+    return {
+      bbox: bbox || bounds?.bbox || null,
+      geometry: noClip ? null : bounds?.geometry || null,
+      noClip: validateNoClip(noClip),
+    }
+  }
+}
+
+function validateNoClip(noClip: boolean): boolean {
+  // DEFAULT CASE
+  return noClip
 }
