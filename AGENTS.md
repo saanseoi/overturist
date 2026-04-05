@@ -85,6 +85,13 @@ The tool maintains a `releases.json` file with cached release metadata and provi
 - Use `camelCase` for variables and functions, `PascalCase` for types and interfaces, and descriptive file names such as `releases.ts` or `divisions.ts`.
 - Keep CLI-facing strings concise and operational.
 
+### Comments
+- ALWAYS preserve existing comments when editing code; update wording if behavior changes instead of deleting useful context.
+- ALWAYS use standard JSDoc for exported functions: include `@param`, `@returns`, and `@remarks` where behavior constraints matter.
+- For service modules and route modules:
+  - ALWAYS add JSDoc to exported functions and non-trivial file-local helpers.
+  - ALWAYS add a concise one-line comment immediately above the block of a complex operation so the intent is scannable before reading the implementation.
+
 ## Testing Guidelines
 Use `bun run test`, `bun run typecheck`, and `bun run check` for routine validation. Then smoke-test the affected CLI path, for example `bun overturist.ts --help` or a scoped `get` command against a known division. Place unit tests under `tests/` unless a module-local test is clearer.
 
