@@ -37,3 +37,6 @@ data/
 
 # sql queries
 sql/
+
+# LLMs
+.codex
