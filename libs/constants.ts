@@ -17,11 +17,11 @@ export const ADMIN_LEVELS_BY_VERSION = {
     },
     2: {
       name: 'Regional',
-      subtypes: ['region'],
+      subtypes: ['macroregion', 'region'],
     },
     3: {
       name: 'Local',
-      subtypes: ['county', 'localadmin', 'locality'],
+      subtypes: ['macrocounty', 'county', 'localadmin', 'locality'],
     },
     4: {
       name: 'Community',
@@ -31,15 +31,15 @@ export const ADMIN_LEVELS_BY_VERSION = {
   '2025-12-22.0': {
     1: {
       name: 'National',
-      subtypes: ['admin0'],
+      subtypes: ['country', 'dependency'],
     },
     2: {
       name: 'Regional',
-      subtypes: ['admin1'],
+      subtypes: ['macroregion', 'region'],
     },
     3: {
       name: 'Local',
-      subtypes: ['admin2', 'admin3', 'locality', 'borough'],
+      subtypes: ['macrocounty', 'county', 'localadmin', 'locality', 'borough'],
     },
     4: {
       name: 'Community',
@@ -47,6 +47,21 @@ export const ADMIN_LEVELS_BY_VERSION = {
     },
   },
 } as const
+
+export const ALL_DIVISION_SUBTYPES = [
+  'country',
+  'dependency',
+  'macroregion',
+  'region',
+  'macrocounty',
+  'county',
+  'localadmin',
+  'locality',
+  'borough',
+  'macrohood',
+  'neighborhood',
+  'microhood',
+] as const
 
 export const DEFAULT_LOCALE = 'en'
 export const DEFAULT_TARGET = 'division'
