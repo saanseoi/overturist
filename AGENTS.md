@@ -1,20 +1,8 @@
-# CLAUDE.md
+# Repository Guidelines
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## Project Structure & Module Organization
 
-## Development Commands
-
-- `bun run typecheck` - Run TypeScript type checking without emitting files
-- `bun run check` - Run all Biome checks (linting + formatting)
-- `bun run check:fix` - Fix all Biome issues automatically
-- `bun overturist.ts` - Run the CLI tool in interactive mode
-- `bun overturist.ts get` - Run the CLI tool in non-interactive mode
-
-## Architecture Overview
-
-Overturist is a TypeScript CLI tool that downloads and processes geospatial data from the Overture Maps Foundation's S3 bucket. The architecture follows a modular design with clear separation of concerns:
-
-### Core Components
+Overturist is a TypeScript CLI tool that downloads and processes geospatial data from the Overture Maps Foundation's S3 bucket. `overturist.ts` is the Bun CLI entrypoint. The architecture follows a modular design with clear separation of concerns: 
 
 - **overturist.ts** - Main entry point that orchestrates the data extraction workflow
 - **libs/config.ts** - Configuration management using environment variables and defaults
@@ -29,6 +17,18 @@ Overturist is a TypeScript CLI tool that downloads and processes geospatial data
 - **libs/ui.ts** - CLI user interface components and progress displays
 - **libs/utils.ts** - Common utility functions
 - **libs/validation.ts** - Data validation helpers
+
+## Build, Test, and Development Commands
+Use Bun for local work:
+
+- `bun overturist.ts` runs the interactive CLI.
+- `bun overturist.ts get --division <id>` runs the non-interactive download path.
+- `bun run typecheck` runs `tsc --noEmit`.
+- `bun run lint` runs Biome lint rules.
+- `bun run check` runs Biome’s formatter, linter, and assists in check mode.
+- `bun run format` applies project formatting.
+
+Run `bun install` after dependency changes.
 
 ### Data Processing Pipeline
 
@@ -73,3 +73,20 @@ Configuration is handled through:
 Data is organized as: `./data/{release_version}/{hierarchy...}/{feature_type}.parquet`
 
 The tool maintains a `releases.json` file with cached release metadata and provides diff calculations between consecutive releases.
+
+## Coding Style
+- Formatter/linter: Biome (`biome.json`).
+- Indentation: 2 spaces; line width: 88; LF endings.
+- JavaScript/TypeScript style: single quotes, only use semicolons when needed.
+- Prefer small, single-purpose modules under `libs/`.
+- Use `camelCase` for variables and functions, `PascalCase` for types and interfaces, and descriptive file names such as `releases.ts` or `divisions.ts`.
+- Keep CLI-facing strings concise and operational.
+
+## Testing Guidelines
+There is no formal automated test harness yet. For changes, run `bun run typecheck` and `bun run check` at minimum. Then smoke-test the affected CLI path, for example `bun overturist.ts --help` or a scoped `get` command against a known division. If you add tests later, place them near the related module or under a new `tests/` directory, and name them after the target module.
+
+## Commit & Pull Request Guidelines
+Follows Conventional Commit prefixes such as `feat:`, `fix:`, `refactor:`, `docs:`, and `chore:`. Keep commits focused and imperative, for example `fix: validate bbox parsing`. Pull requests should explain the user-visible change, list validation commands run, note config or data impacts, and include screenshots or terminal output only when the CLI UX changed.
+
+## Configuration & Data Notes
+Project configuration is environment-driven via `.env`; use `.env.example` as the source of truth for new keys. Do not commit secrets, downloaded datasets, or cache artifacts unless the change explicitly requires fixture data.
