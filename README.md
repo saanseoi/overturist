@@ -74,9 +74,8 @@ bun overturist.ts get [OPTIONS]
 | Option           | Alias | Description                                                                    |
 | ---------------- | ----- | ------------------------------------------------------------------------------ |
 | `--division`     | `-d`  | Filter results by division's boundaries                                        |
-| `--bbox`         | `-b`  | Filter results by bounding box (e.g., -71.068,42.353,-71.058,42.363)           |
-| `--no-clip-geom` | -     | Do not clip results to division boundary geometry                              |
-| `--no-clip-bbox` | -     | Do not clip results to bbox (i.e. download full dataset - NOT IMPLEMENTED)     |
+| `--bbox`         | -     | Filter results by bounding box (e.g., -71.068,42.353,-71.058,42.363)           |
+| `--no-clip`      | -     | Do not clip results to division boundary geometry                              |
 
 #### File Handling
 
@@ -90,7 +89,7 @@ bun overturist.ts get [OPTIONS]
 
 | Option       | Alias | Description                  |
 | ------------ | ----- | ---------------------------- |
-| `--examples` | `-x`  | Show detailed usage examples |
+| `--examples` | -     | Show detailed usage examples |
 | `--help`     | `-h`  | Show help message            |
 
 ### Environment Variables
@@ -116,25 +115,25 @@ bun overturist.ts --examples
 
 ```bash
 # Basic download (requires division_id)
-bun overturistist get --division <id>
+bun overturist.ts get --division <id>
 
 # Download specific theme
-bun overturistist get --division <id> --theme buildings
+bun overturist.ts get --division <id> --theme buildings
 
 # Download with specific release
-bun overturistist get --division <id> --release 2025-10-22.0
+bun overturist.ts get --division <id> --release 2025-10-22.0
 
 # Replace existing files
-bun overturistist get --division <id> --replace
+bun overturist.ts get --division <id> --replace
 
 # Download within bounding box
-bun overturistist get --division <id> --bbox -71.068,42.353,-71.058,42.363
+bun overturist.ts get --division <id> --bbox -71.068,42.353,-71.058,42.363
 
 # Result will be a rectangle intersecting with bbox instead of clipped geometry
-bun overturistist get --division <id> --no-clip-geom
+bun overturist.ts get --division <id> --no-clip
 
 # Complex example with multiple options
-bun overturistist get \
+bun overturist.ts get \
   --division <id> \
   --theme buildings,transportation \
   --type building,segment \
@@ -148,7 +147,7 @@ The tool reads configuration from multiple sources (in order of priority):
 
 ```bash
 # Priority 1: CLI arguments (highest)
-bun overturist.ts --get --division <id> --theme buildings
+bun overturist.ts get --division <id> --theme buildings
 
 # Priority 2: Environment variables (.env file)
 # DIVISION_ID="b4f09a9f-4cba-4a7c-bf58-2e63bc2e913d"
@@ -176,6 +175,8 @@ The interactive mode is ideal for exploratory use cases where you want to search
 ### Scripts
 
 - `bun run typecheck` - Run TypeScript type checking
+- `bun run test` - Run the unit test suite with Bun's built-in test runner
+- `bun run test:watch` - Re-run tests in watch mode
 - `bun run lint` - Run Biome linter
 - `bun run lint:fix` - Fix linting issues automatically
 - `bun run format` - Format code with Biome
@@ -190,8 +191,12 @@ overturist/
 ├── libs/           # Utility modules
 │   ├── args.ts     # Command-line argument parsing
 │   ├── config.ts   # Configuration management
-│   ├── init.ts     # Initialization logic
+│   ├── get.ts      # Non-interactive workflow orchestration
+│   ├── interactive.ts # Interactive menu orchestration
 │   ├── processing.ts # Data processing
+│   ├── queries.ts  # DuckDB-backed S3 query helpers
+│   ├── releases.ts # Release selection and metadata
+│   ├── s3.ts       # S3 listing and download helpers
 │   ├── types.ts    # TypeScript type definitions
 │   └── ui.ts       # User interface helpers
 ├── data/           # Output directory for downloaded data
