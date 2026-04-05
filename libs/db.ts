@@ -1,6 +1,66 @@
-import { log } from "@clack/prompts";
-import { type DuckDBConnection, DuckDBInstance } from "@duckdb/node-api";
-import kleur from "kleur";
+import { log } from '@clack/prompts'
+import { type DuckDBConnection, DuckDBInstance } from '@duckdb/node-api'
+import kleur from 'kleur'
+
+type DuckDBQueryResult = {
+  stdout: string
+  stderr: string
+  exitCode: number
+}
+
+type DuckDBQueryOptions = {
+  silent?: boolean
+  progressCallback?: (progress: number, status: string) => void
+}
+
+/**
+ * Executes a DuckDB query against an existing connection and normalizes the response shape.
+ * @param connection - Open DuckDB connection to execute against
+ * @param query - SQL query to execute
+ * @param options - Optional logging and progress behavior
+ * @returns Promise resolving to a CLI-style query result object
+ */
+async function executeDuckDBQuery(
+  connection: DuckDBConnection,
+  query: string,
+  options: DuckDBQueryOptions = {},
+): Promise<DuckDBQueryResult> {
+  const { silent = false, progressCallback } = options
+
+  try {
+    // Execute the query eagerly so callers get a fully materialized JSON payload.
+    const reader = await connection.runAndReadAll(query)
+    const result = reader.getRowObjectsJson()
+
+    if (progressCallback) {
+      progressCallback(100, 'Complete')
+    }
+
+    return {
+      stdout: JSON.stringify(result),
+      stderr: '',
+      exitCode: 0,
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    const errorStack = error instanceof Error ? error.stack : undefined
+
+    if (!silent) {
+      log.error(`DuckDB query failed: ${errorMessage}`)
+      log.message(kleur.white(errorStack || ''))
+    }
+
+    if (progressCallback) {
+      progressCallback(0, `Error: ${errorMessage}`)
+    }
+
+    return {
+      stdout: '',
+      stderr: errorMessage,
+      exitCode: 1,
+    }
+  }
+}
 
 /**
  * Manages a persistent DuckDB in-memory instance for multi-step processing.
@@ -10,50 +70,48 @@ import kleur from "kleur";
  * temporary tables between query steps (like bbox then geom filtering).
  */
 export class DuckDBManager {
-    private instance: DuckDBInstance | null = null;
-    private connection: DuckDBConnection | null = null;
+  private instance: DuckDBInstance | null = null
+  private connection: DuckDBConnection | null = null
 
-    /**
-     * Creates or returns an existing DuckDB in-memory instance.
-     *
-     * @returns Promise<DuckDBConnection> - A connection to the in-memory database
-     * @throws Error - If database initialization fails
-     *
-     * @example
-     * const manager = new DuckDBManager();
-     * const connection = await manager.getConnection();
-     * await connection.run("CREATE TEMP TABLE features AS SELECT * FROM data");
-     */
-    async getConnection(): Promise<DuckDBConnection> {
-        if (!this.instance || !this.connection) {
-            this.instance = await DuckDBInstance.create(":memory:");
-            this.connection = await this.instance.connect();
-        }
-        return this.connection;
+  /**
+   * Creates or returns an existing DuckDB in-memory instance.
+   *
+   * @returns Promise<DuckDBConnection> - A connection to the in-memory database
+   * @throws Error - If database initialization fails
+   *
+   * @example
+   * const manager = new DuckDBManager();
+   * const connection = await manager.getConnection();
+   * await connection.run("CREATE TEMP TABLE features AS SELECT * FROM data");
+   */
+  async getConnection(): Promise<DuckDBConnection> {
+    if (!this.instance || !this.connection) {
+      this.instance = await DuckDBInstance.create(':memory:')
+      this.connection = await this.instance.connect()
     }
+    return this.connection
+  }
 
-    /**
-     * Closes the database connection and cleans up resources.
-     *
-     * Should be called when processing is complete to free memory.
-     *
-     * @example
-     * const manager = new DuckDBManager();
-     * // ... use the database
-     * await manager.close();
-     */
-    async close(): Promise<void> {
-        if (this.connection) {
-            // Note: DuckDBConnection doesn't have an explicit close method in the Node.js API
-            // The connection will be cleaned up when the instance is closed
-            this.connection = null;
-        }
-        if (this.instance) {
-            // Note: DuckDBInstance doesn't have an explicit close method either
-            // Resources will be garbage collected
-            this.instance = null;
-        }
+  /**
+   * Closes the database connection and cleans up resources.
+   *
+   * Should be called when processing is complete to free memory.
+   *
+   * @example
+   * const manager = new DuckDBManager();
+   * // ... use the database
+   * await manager.close();
+   */
+  async close(): Promise<void> {
+    if (this.connection) {
+      this.connection.closeSync()
+      this.connection = null
     }
+    if (this.instance) {
+      this.instance.closeSync()
+      this.instance = null
+    }
+  }
 }
 
 /**
@@ -110,60 +168,18 @@ export class DuckDBManager {
  * @since 0.0.1
  */
 export async function runDuckDBQuery(
-    query: string,
-    options: {
-        silent?: boolean;
-        progressCallback?: (progress: number, status: string) => void;
-    } = {},
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-    const { silent = false, progressCallback } = options;
+  query: string,
+  options: DuckDBQueryOptions = {},
+): Promise<DuckDBQueryResult> {
+  const instance = await DuckDBInstance.create(':memory:')
+  const connection = await instance.connect()
 
-    try {
-        // Create a fresh in-memory database instance for isolation
-        const instance = await DuckDBInstance.create(":memory:");
-        const connection = await instance.connect();
-
-        // Execute the query and retrieve all results
-        // runAndReadAll() blocks until the query completes
-        const reader = await connection.runAndReadAll(query);
-
-        // Convert results to JSON array of objects format
-        const result = reader.getRowObjectsJson();
-
-        // Notify progress callback of successful completion
-        if (progressCallback) {
-            progressCallback(100, "Complete");
-        }
-
-        // Return successful result
-        return {
-            stdout: JSON.stringify(result),
-            stderr: "",
-            exitCode: 0,
-        };
-    } catch (error) {
-        // Extract error information
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        const errorStack = error instanceof Error ? error.stack : undefined;
-
-        // Log error to console unless silent mode is enabled
-        if (!silent) {
-            log.error(`DuckDB query failed: ${errorMessage}`);
-            log.message(kleur.white(errorStack || ""));
-        }
-
-        // Notify progress callback of error
-        if (progressCallback) {
-            progressCallback(0, `Error: ${errorMessage}`);
-        }
-
-        // Return error result (errors are caught, not thrown)
-        return {
-            stdout: "",
-            stderr: errorMessage,
-            exitCode: 1,
-        };
-    }
+  try {
+    return await executeDuckDBQuery(connection, query, options)
+  } finally {
+    connection.closeSync()
+    instance.closeSync()
+  }
 }
 
 /**
@@ -195,51 +211,10 @@ export async function runDuckDBQuery(
  * await manager.close();
  */
 export async function runDuckDBQueryWithManager(
-    manager: DuckDBManager,
-    query: string,
-    options: {
-        silent?: boolean;
-        progressCallback?: (progress: number, status: string) => void;
-    } = {},
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-    const { silent = false, progressCallback } = options;
-
-    try {
-        const connection = await manager.getConnection();
-
-        // Execute the query and get results as JSON
-        const reader = await connection.runAndReadAll(query);
-
-        // Get results in the expected format (array of objects)
-        const result = reader.getRowObjectsJson();
-
-        // Notify completion if callback provided
-        if (progressCallback) {
-            progressCallback(100, "Complete");
-        }
-
-        return {
-            stdout: JSON.stringify(result),
-            stderr: "",
-            exitCode: 0,
-        };
-    } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        const errorStack = error instanceof Error ? error.stack : undefined;
-
-        if (!silent) {
-            log.error(`DuckDB query failed: ${errorMessage}`);
-            log.message(kleur.white(errorStack || ""));
-        }
-
-        if (progressCallback) {
-            progressCallback(0, `Error: ${errorMessage}`);
-        }
-
-        return {
-            stdout: "",
-            stderr: errorMessage,
-            exitCode: 1,
-        };
-    }
+  manager: DuckDBManager,
+  query: string,
+  options: DuckDBQueryOptions = {},
+): Promise<DuckDBQueryResult> {
+  const connection = await manager.getConnection()
+  return await executeDuckDBQuery(connection, query, options)
 }
