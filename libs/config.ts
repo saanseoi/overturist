@@ -64,11 +64,10 @@ function applyEnvVars(config: Config): Config {
     updatedConfig.divisionId = process.env.DIVISION_ID
   }
 
-  // Apply noClip environment variables
-  // NO_CLIP_BBOX takes precedence over NO_CLIP_GEOM
-  if (process.env.NO_CLIP === '1') {
+  // Apply boundary-filter environment variable.
+  if (process.env.SKIP_BOUNDARY_FILTER === '1') {
     updatedConfig.noClip = true
-  } else if (process.env.NO_CLIP === '0') {
+  } else if (process.env.SKIP_BOUNDARY_FILTER === '0') {
     updatedConfig.noClip = false
   }
 

@@ -46,8 +46,8 @@ const options: Record<string, OptionConfig> = {
     boolean: false,
     group: 'Geospatial',
   },
-  'no-clip': {
-    description: 'Do not clip results to division boundary geometry',
+  'skip-boundary-filter': {
+    description: 'Skip division boundary filtering and rely on bbox only',
     boolean: true,
     group: 'Geospatial',
   },
@@ -109,7 +109,7 @@ export function handleArguments(argv: string[] = process.argv): CliArgs {
   handleModeFlags(parsedArgs)
 
   // Parse file handling action (skip/replace/abort)
-  const onFilesExists = parseFileHandlingAction(parsedArgs)
+  const onFileExists = parseFileHandlingAction(parsedArgs)
 
   // Parse repeatable values directly from argv so repeated flags remain intact.
   const themes = parseRepeatableArgument(argv, 'theme', 'T')
@@ -127,13 +127,13 @@ export function handleArguments(argv: string[] = process.argv): CliArgs {
   const target = validateTarget(parsedArgs.target)
 
   return {
-    onFilesExists,
+    onFileExists,
     themes,
     types,
     divisionId,
     releaseVersion,
     bbox,
-    noClip: parsedArgs['no-clip'],
+    noClip: parsedArgs['skip-boundary-filter'],
     target,
     locale,
     get: isGetCommand(argv),
@@ -285,7 +285,7 @@ export function displayExamples() {
             'All features will fall within this bounding box (west, south, east, north)',
         },
         {
-          command: '--no-clip',
+          command: '--skip-boundary-filter',
           description:
             'Skip boundary geometry, rely solely on bbox for results filtering',
         },

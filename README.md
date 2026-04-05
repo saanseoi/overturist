@@ -75,7 +75,7 @@ bun overturist.ts get [OPTIONS]
 | ---------------- | ----- | ------------------------------------------------------------------------------ |
 | `--division`     | `-d`  | Filter results by division's boundaries                                        |
 | `--bbox`         | -     | Filter results by bounding box (e.g., -71.068,42.353,-71.058,42.363)           |
-| `--no-clip`      | -     | Do not clip results to division boundary geometry                              |
+| `--skip-boundary-filter` | - | Skip division boundary filtering and rely on bbox only                     |
 
 #### File Handling
 
@@ -129,8 +129,8 @@ bun overturist.ts get --division <id> --replace
 # Download within bounding box
 bun overturist.ts get --division <id> --bbox -71.068,42.353,-71.058,42.363
 
-# Result will be a rectangle intersecting with bbox instead of clipped geometry
-bun overturist.ts get --division <id> --no-clip
+# Skip the division boundary filter and rely on bbox intersection only
+bun overturist.ts get --division <id> --skip-boundary-filter
 
 # Complex example with multiple options
 bun overturist.ts get \
