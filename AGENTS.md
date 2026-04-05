@@ -2,16 +2,18 @@
 
 ## Project Structure & Module Organization
 
-Overturist is a TypeScript CLI tool that downloads and processes geospatial data from the Overture Maps Foundation's S3 bucket. `overturist.ts` is the Bun CLI entrypoint. The architecture follows a modular design with clear separation of concerns: 
+Overturist is a TypeScript CLI tool that downloads and processes geospatial data from the Overture Maps Foundation's S3 bucket. `overturist.ts` is the Bun CLI entrypoint. The architecture follows a modular design with clear separation of concerns:
 
 - **overturist.ts** - Main entry point that orchestrates the data extraction workflow
 - **libs/config.ts** - Configuration management using environment variables and defaults
+- **libs/get.ts** - Non-interactive workflow orchestration
+- **libs/interactive.ts** - Interactive menu workflow
 - **libs/types.ts** - TypeScript type definitions for all data structures
 - **libs/processing.ts** - Core data processing logic with DuckDB spatial queries
-- **libs/duckdb.ts** - DuckDB wrapper for spatial queries and Parquet file operations
+- **libs/db.ts** - DuckDB wrapper for spatial queries and Parquet file operations
 - **libs/releases.ts** - Release management and version handling
 - **libs/s3.ts** - AWS S3 client integration for data downloads
-- **libs/init.ts** - Initialization workflow and release context setup
+- **libs/queries.ts** - DuckDB-backed S3 query helpers
 - **libs/args.ts** - Command-line argument parsing
 - **libs/fs.ts** - File system operations and output directory management
 - **libs/ui.ts** - CLI user interface components and progress displays
@@ -24,6 +26,7 @@ Use Bun for local work:
 - `bun overturist.ts` runs the interactive CLI.
 - `bun overturist.ts get --division <id>` runs the non-interactive download path.
 - `bun run typecheck` runs `tsc --noEmit`.
+- `bun run test` runs the unit test suite.
 - `bun run lint` runs Biome lint rules.
 - `bun run check` runs Biome’s formatter, linter, and assists in check mode.
 - `bun run format` applies project formatting.
@@ -83,7 +86,7 @@ The tool maintains a `releases.json` file with cached release metadata and provi
 - Keep CLI-facing strings concise and operational.
 
 ## Testing Guidelines
-There is no formal automated test harness yet. For changes, run `bun run typecheck` and `bun run check` at minimum. Then smoke-test the affected CLI path, for example `bun overturist.ts --help` or a scoped `get` command against a known division. If you add tests later, place them near the related module or under a new `tests/` directory, and name them after the target module.
+Use `bun run test`, `bun run typecheck`, and `bun run check` for routine validation. Then smoke-test the affected CLI path, for example `bun overturist.ts --help` or a scoped `get` command against a known division. Place unit tests under `tests/` unless a module-local test is clearer.
 
 ## Commit & Pull Request Guidelines
 Follows Conventional Commit prefixes such as `feat:`, `fix:`, `refactor:`, `docs:`, and `chore:`. Keep commits focused and imperative, for example `fix: validate bbox parsing`. Pull requests should explain the user-visible change, list validation commands run, note config or data impacts, and include screenshots or terminal output only when the CLI UX changed.
