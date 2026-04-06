@@ -1,6 +1,6 @@
 import kleur from 'kleur'
-import { buildBboxPath } from '../fs'
-import type { BBox } from '../types'
+import { buildBboxPath } from '../core/fs'
+import type { BBox } from '../core/types'
 
 /**
  * Formats a bounding box for note output.

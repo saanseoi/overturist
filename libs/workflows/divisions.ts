@@ -1,15 +1,15 @@
 import { spinner } from '@clack/prompts'
 import kleur from 'kleur'
-import { getCachedDivision } from './cache'
-import { ALL_DIVISION_SUBTYPES } from './constants'
+import { getCachedDivision } from '../data/cache'
+import { ALL_DIVISION_SUBTYPES } from '../core/constants'
 import { searchDivisions } from './processing'
 import {
   getDivisionsByIds,
   getDivisionsBySourceRecordId,
   localizeDivisionHierarchiesForRelease,
   normalizeOsmRelationRecordId,
-} from './queries'
-import { getAdminLevels } from './releases'
+} from '../data/queries'
+import { getAdminLevels } from '../data/releases'
 import type {
   CliArgs,
   Config,
@@ -18,15 +18,15 @@ import type {
   InteractiveOptions,
   Target,
   Version,
-} from './types'
+} from '../core/types'
 import {
   displaySelectedDivision,
   promptForAdministrativeLevel,
   promptForAreaName,
   promptForDivisionSelection,
   promptForOsmRelationId,
-} from './ui'
-import { bail, bailFromSpinner } from './utils'
+} from '../ui'
+import { bail, bailFromSpinner } from '../core/utils'
 
 const ANY_ADMIN_LEVEL = 99
 

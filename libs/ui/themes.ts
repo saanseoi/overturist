@@ -1,8 +1,8 @@
 import { groupMultiselect, select } from '@clack/prompts'
 import kleur from 'kleur'
-import { note } from '../note'
-import type { ThemeDifferences, ThemeMapping } from '../types'
-import { bail } from '../utils'
+import { note } from '../core/note'
+import type { ThemeDifferences, ThemeMapping } from '../core/types'
+import { bail } from '../core/utils'
 
 /**
  * Builds a formatted theme-difference message.

@@ -1,10 +1,10 @@
 import path from 'node:path'
 import { spinner } from '@clack/prompts'
 import kleur from 'kleur'
-import { initializeLocale } from './config'
+import { initializeLocale } from '../core/config'
 import { initializeDivision } from './divisions'
-import { ensureDirectoryExists, getOutputDir, writeJsonFile } from './fs'
-import { initializeReleaseVersion } from './releases'
+import { ensureDirectoryExists, getOutputDir, writeJsonFile } from '../core/fs'
+import { initializeReleaseVersion } from '../data/releases'
 import type {
   CliArgs,
   Config,
@@ -13,9 +13,9 @@ import type {
   ExtendedDivision,
   InteractiveOptions,
   Version,
-} from './types'
-import { displayDivisionInfo } from './ui'
-import { bailFromSpinner } from './utils'
+} from '../core/types'
+import { displayDivisionInfo } from '../ui'
+import { bailFromSpinner } from '../core/utils'
 
 type DivisionInfoContext = Pick<
   ControlContext,

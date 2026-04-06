@@ -1,12 +1,12 @@
-import { initializeBounds, initializeLocale, initializeTarget } from './config'
+import { initializeBounds, initializeLocale, initializeTarget } from '../core/config'
 import { initializeDivision } from './divisions'
-import { initializeFileHandling, initializeOutputDir } from './fs'
+import { initializeFileHandling, initializeOutputDir } from '../core/fs'
 import { processFeatureTypes } from './processing'
-import { initializeReleaseVersion } from './releases'
+import { initializeReleaseVersion } from '../data/releases'
 import { initializeThemeMapping } from './themes'
-import type { CliArgs, Config, ControlContext, InteractiveOptions } from './types'
-import { calculateColumnWidths, displayExtractionPlan, displayTableHeader } from './ui'
-import { setupGracefulExit } from './utils'
+import type { CliArgs, Config, ControlContext, InteractiveOptions } from '../core/types'
+import { calculateColumnWidths, displayExtractionPlan, displayTableHeader } from '../ui'
+import { setupGracefulExit } from '../core/utils'
 
 /**
  * Resolves the full execution context shared by interactive and non-interactive downloads.

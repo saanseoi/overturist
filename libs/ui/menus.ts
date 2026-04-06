@@ -76,7 +76,7 @@ export async function promptForDownloadAction(): Promise<string> {
 export async function promptForAreaSearchAction(
   message: string = 'Search for an area:',
 ): Promise<string> {
-  const cacheModule = await import('../cache')
+  const cacheModule = await import('../data/cache')
   const hasSearches = await cacheModule.hasCachedSearches()
 
   const selected = await select({

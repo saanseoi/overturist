@@ -1,9 +1,9 @@
 import type { Option } from '@clack/prompts'
 import { log, select } from '@clack/prompts'
 import kleur from 'kleur'
-import { getSearchHistory } from '../cache'
-import { getAdminLevels } from '../releases'
-import type { SearchHistoryItem } from '../types'
+import { getSearchHistory } from '../data/cache'
+import { getAdminLevels } from '../data/releases'
+import type { SearchHistoryItem } from '../core/types'
 import { ANY_ADMIN_LEVEL } from './shared'
 
 /**

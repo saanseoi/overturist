@@ -8,9 +8,9 @@ import {
   cacheSearchResults,
   getCachedDivision,
   getCachedSearchResults,
-} from './cache'
-import { DuckDBManager } from './db'
-import { fileExists } from './fs'
+} from '../data/cache'
+import { DuckDBManager } from '../data/db'
+import { fileExists } from '../core/fs'
 import {
   extractBoundsFromDivision,
   getDivisionsByIds,
@@ -22,8 +22,8 @@ import {
   getLastReleaseCount,
   localizeDivisionHierarchiesForRelease,
   normalizeOsmRelationRecordId,
-} from './queries'
-import { downloadParquetFiles } from './s3'
+} from '../data/queries'
+import { downloadParquetFiles } from '../data/s3'
 import type {
   BBox,
   ControlContext,
@@ -33,15 +33,15 @@ import type {
   ProgressState,
   ProgressUpdate,
   Version,
-} from './types'
+} from '../core/types'
 import {
   applyProgressUpdate,
   finalizeProgressDisplay,
   handleSkippedFeature,
   updateProgressDisplay,
   updateProgressStatus,
-} from './ui'
-import { bail, bailFromSpinner, getDiffCount } from './utils'
+} from '../ui'
+import { bail, bailFromSpinner, getDiffCount } from '../core/utils'
 
 /**
  * FEATURES

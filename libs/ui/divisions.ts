@@ -2,10 +2,16 @@ import path from 'node:path'
 import type { Option } from '@clack/prompts'
 import { select, text } from '@clack/prompts'
 import kleur from 'kleur'
-import { note } from '../note'
-import { getAdminLevels } from '../releases'
-import type { BBox, ControlContext, Division, DivisionOption, Version } from '../types'
-import { successExit } from '../utils'
+import { note } from '../core/note'
+import { getAdminLevels } from '../data/releases'
+import type {
+  BBox,
+  ControlContext,
+  Division,
+  DivisionOption,
+  Version,
+} from '../core/types'
+import { successExit } from '../core/utils'
 import { formatPath } from './format'
 import { ANY_ADMIN_LEVEL } from './shared'
 

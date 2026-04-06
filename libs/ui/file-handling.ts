@@ -1,8 +1,8 @@
 import { log, select } from '@clack/prompts'
 import kleur from 'kleur'
-import { DEFAULT_ON_FILE_EXISTS } from '../constants'
-import type { InteractiveOptions, OnExistingFilesAction } from '../types'
-import { successExit } from '../utils'
+import { DEFAULT_ON_FILE_EXISTS } from '../core/constants'
+import type { InteractiveOptions, OnExistingFilesAction } from '../core/types'
+import { successExit } from '../core/utils'
 
 /**
  * Determines how to handle existing files for the current extraction.

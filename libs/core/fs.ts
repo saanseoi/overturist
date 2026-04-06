@@ -11,7 +11,7 @@ import type {
   Target,
   Version,
 } from './types'
-import { determineActionOnExistingFiles } from './ui'
+import { determineActionOnExistingFiles } from '../ui'
 import { bail, failedExit } from './utils'
 
 type DirectoryEntryInfo = {

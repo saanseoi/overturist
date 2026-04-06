@@ -8,7 +8,7 @@ import type {
   OptionConfig,
   ParsedArgs,
 } from './types'
-import { displayBanner } from './ui'
+import { displayBanner } from '../ui'
 import { successExit } from './utils'
 
 const options: Record<string, OptionConfig> = {

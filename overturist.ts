@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 import kleur from 'kleur'
-import { handleArguments } from './libs/args'
-import { getConfig } from './libs/config'
-import { getCmd } from './libs/get'
-import { infoCmd } from './libs/info'
-import { handleMainMenu } from './libs/interactive'
+import { handleArguments } from './libs/core/args'
+import { getConfig } from './libs/core/config'
+import { getCmd } from './libs/workflows/get'
+import { infoCmd } from './libs/workflows/info'
+import { handleMainMenu } from './libs/workflows/interactive'
 
 /**
  * CLI entry point for Overturist.

@@ -2,8 +2,8 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { confirm, log } from '@clack/prompts'
 import kleur from 'kleur'
-import { reloadConfig } from './config'
-import type { CliArgs, Config } from './types'
+import { reloadConfig } from '../core/config'
+import type { CliArgs, Config } from '../core/types'
 
 /**
  * Checks whether a file-system path exists.

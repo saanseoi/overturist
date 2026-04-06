@@ -1,8 +1,8 @@
 import { select } from '@clack/prompts'
 import kleur from 'kleur'
-import { getS3Releases } from '../s3'
-import type { ReleaseData } from '../types'
-import { successExit } from '../utils'
+import { getS3Releases } from '../data/s3'
+import type { ReleaseData } from '../core/types'
+import { successExit } from '../core/utils'
 
 /**
  * Prompts for a release version when interactive selection is required.

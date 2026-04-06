@@ -1,7 +1,7 @@
 import { log } from '@clack/prompts'
 import kleur from 'kleur'
 import { DEFAULT_LOCALE, DEFAULT_ON_FILE_EXISTS, DEFAULT_TARGET } from './constants'
-import { extractBoundsFromDivisionGeometry } from './processing'
+import { extractBoundsFromDivisionGeometry } from '../workflows/processing'
 import type {
   BBox,
   CliArgs,

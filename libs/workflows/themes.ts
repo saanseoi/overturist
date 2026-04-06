@@ -1,8 +1,8 @@
 import { log, spinner } from '@clack/prompts'
 import kleur from 'kleur'
-import { cacheThemeMapping, getCachedThemeMapping } from './cache'
-import { getPrecedingReleaseVersion } from './releases'
-import { getFeatureTypesForVersion } from './s3'
+import { cacheThemeMapping, getCachedThemeMapping } from '../data/cache'
+import { getPrecedingReleaseVersion } from '../data/releases'
+import { getFeatureTypesForVersion } from '../data/s3'
 import type {
   CliArgs,
   Config,
@@ -11,10 +11,10 @@ import type {
   Spinner,
   ThemeMapping,
   Version,
-} from './types'
-import { promptUserForThemeAction, selectFeatureTypesInteractively } from './ui'
-import { bail, failedExit } from './utils'
-import { compareThemeMappings } from './validation'
+} from '../core/types'
+import { promptUserForThemeAction, selectFeatureTypesInteractively } from '../ui'
+import { bail, failedExit } from '../core/utils'
+import { compareThemeMappings } from '../core/validation'
 
 type ThemeMappingLoadResult = {
   themeMapping: ThemeMapping

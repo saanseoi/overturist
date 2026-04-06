@@ -1,15 +1,15 @@
 import { outro } from '@clack/prompts'
 import kleur from 'kleur'
-import { getCachedSearchResults } from './cache'
+import { getCachedSearchResults } from '../data/cache'
 import { executeDownloadWorkflow, resolveOptions } from './get'
 import {
   infoCmd,
   persistAndDisplayDivisionInfo,
   resolveDivisionInfoContext,
 } from './info'
-import { initializeLocale } from './config'
-import { localizeDivisionHierarchiesForRelease } from './queries'
-import type { CliArgs, Config, Division } from './types'
+import { initializeLocale } from '../core/config'
+import { localizeDivisionHierarchiesForRelease } from '../data/queries'
+import type { CliArgs, Config, Division } from '../core/types'
 import {
   displayBanner,
   promptForAreaSearchAction,
@@ -18,7 +18,7 @@ import {
   promptForMainAction,
   promptForSearchHistory,
   promptForSettingsAction,
-} from './ui'
+} from '../ui'
 
 /**
  * MENUS

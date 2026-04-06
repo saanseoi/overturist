@@ -1,9 +1,9 @@
 import readline from 'node:readline'
 import kleur from 'kleur'
-import { note } from '../note'
-import { getCount, getLastReleaseCount } from '../queries'
-import type { ControlContext, ProgressState, ProgressUpdate } from '../types'
-import { getDiffCount } from '../utils'
+import { note } from '../core/note'
+import { getCount, getLastReleaseCount } from '../data/queries'
+import type { ControlContext, ProgressState, ProgressUpdate } from '../core/types'
+import { getDiffCount } from '../core/utils'
 import { formatBboxPath, formatPath } from './format'
 
 const ACTIVE_CELL_FRAMES = ['🟨', '🟩', '🟦', '🟪']
