@@ -5,20 +5,11 @@
 Overturist is a TypeScript CLI tool that downloads and processes geospatial data from the Overture Maps Foundation's S3 bucket. `overturist.ts` is the Bun CLI entrypoint. The architecture follows a modular design with clear separation of concerns:
 
 - **overturist.ts** - Main entry point that orchestrates the data extraction workflow
-- **libs/config.ts** - Configuration management using environment variables and defaults
-- **libs/get.ts** - Non-interactive workflow orchestration
-- **libs/interactive.ts** - Interactive menu workflow
-- **libs/types.ts** - TypeScript type definitions for all data structures
-- **libs/processing.ts** - Core data processing logic with DuckDB spatial queries
-- **libs/db.ts** - DuckDB wrapper for spatial queries and Parquet file operations
-- **libs/releases.ts** - Release management and version handling
-- **libs/s3.ts** - AWS S3 client integration for data downloads
-- **libs/queries.ts** - DuckDB-backed S3 query helpers
-- **libs/args.ts** - Command-line argument parsing
-- **libs/fs.ts** - File system operations and output directory management
-- **libs/ui.ts** - CLI user interface components and progress displays
-- **libs/utils.ts** - Common utility functions
-- **libs/validation.ts** - Data validation helpers
+- **libs/core/** - Shared configuration, args, filesystem helpers, types, validation, and utilities
+- **libs/data/** - Cache access, S3 integration, release metadata, DuckDB queries, and web scraping
+- **libs/workflows/** - Interactive, non-interactive, division, processing, info, settings, and theme workflows
+- **libs/ui/** - CLI menus, prompts, progress rendering, and formatting helpers
+- **tests/** - Unit tests plus workflow suites for higher-level orchestration paths
 
 ## Build, Test, and Development Commands
 Use Bun for local work:
@@ -73,7 +64,13 @@ Configuration is handled through:
 
 ### Output Structure
 
-Data is organized as: `./data/{release_version}/{hierarchy...}/{feature_type}.parquet`
+Data is organized as: `./data/{release_version}/{hierarchy...}/{feature_type}[.{clipSuffix}].parquet`
+
+Clip-mode-specific filenames are required so different geometry clipping strategies never collide:
+
+- `smart` -> `{featureType}.parquet`
+- `preserve` -> `{featureType}.preserveCrop.parquet`
+- `all` -> `{featureType}.containCrop.parquet`
 
 The tool maintains a `releases.json` file with cached release metadata and provides diff calculations between consecutive releases.
 
@@ -94,6 +91,13 @@ The tool maintains a `releases.json` file with cached release metadata and provi
 
 ## Testing Guidelines
 Use `bun run test`, `bun run typecheck`, and `bun run check` for routine validation. Then smoke-test the affected CLI path, for example `bun overturist.ts --help` or a scoped `get` command against a known division. Place unit tests under `tests/` unless a module-local test is clearer.
+
+When changing output semantics, cache layout, clip mode behavior, or file naming:
+
+- Add or update tests for the low-level helper that constructs filenames or paths.
+- Add or update at least one workflow-facing test that proves skip/replace/existing-file behavior still uses the same naming rule.
+- Treat clip-mode changes as output-shape changes. A new clip mode or changed clipping semantics must not reuse an old filename silently.
+- Prefer targeted test runs while iterating, but finish with the narrowest high-signal suite that covers the touched workflow plus `bun run typecheck`.
 
 ## Commit & Pull Request Guidelines
 Follows Conventional Commit prefixes such as `feat:`, `fix:`, `refactor:`, `docs:`, and `chore:`. Keep commits focused and imperative, for example `fix: validate bbox parsing`. Pull requests should explain the user-visible change, list validation commands run, note config or data impacts, and include screenshots or terminal output only when the CLI UX changed.
