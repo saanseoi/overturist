@@ -1,8 +1,11 @@
 import { select } from '@clack/prompts'
-import kleur from 'kleur'
 import { getS3Releases } from '../data/s3'
 import type { ReleaseData } from '../core/types'
 import { successExit } from '../core/utils'
+import {
+  buildReleaseVersionOptions,
+  getSelectableReleaseVersions,
+} from './releases.utils'
 
 /**
  * Prompts for a release version when interactive selection is required.
@@ -13,21 +16,13 @@ export async function selectReleaseVersion(releaseData?: ReleaseData): Promise<s
   let availableReleases: string[]
 
   if (releaseData) {
-    availableReleases = releaseData.releases
-      .filter(release => release.isAvailableOnS3)
-      .map(release => release.version)
-      .sort()
-      .reverse()
+    availableReleases = getSelectableReleaseVersions(releaseData)
   } else {
     const { s3Releases } = await getS3Releases()
     availableReleases = s3Releases
   }
 
-  const latest = availableReleases[0]
-  const versionOptions = availableReleases.map(version => ({
-    value: version,
-    label: kleur.cyan(version === latest ? `${version} (latest)` : version),
-  }))
+  const versionOptions = buildReleaseVersionOptions(availableReleases)
 
   const selectedVersion = await select({
     message: 'Choose a release version:',

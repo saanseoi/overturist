@@ -3,6 +3,7 @@ import kleur from 'kleur'
 import { DEFAULT_ON_FILE_EXISTS } from '../core/constants'
 import type { InteractiveOptions, OnExistingFilesAction } from '../core/types'
 import { successExit } from '../core/utils'
+import { resolveExistingFilesActionStrategy } from './file-handling.utils'
 
 /**
  * Determines how to handle existing files for the current extraction.
@@ -16,15 +17,18 @@ export async function determineActionOnExistingFiles(
   onFileExists: OnExistingFilesAction | undefined | null,
   interactiveOpts: InteractiveOptions | false | undefined,
 ): Promise<OnExistingFilesAction | null> {
-  const isActionUserDefined = onFileExists !== undefined
-  const isNonInteractive = interactiveOpts === false
-  const hasExistingFiles = existingFiles.length > 0
+  const strategy = resolveExistingFilesActionStrategy(
+    existingFiles,
+    onFileExists,
+    interactiveOpts,
+    DEFAULT_ON_FILE_EXISTS,
+  )
 
-  if (!hasExistingFiles) {
+  if (strategy.kind === 'none') {
     return null
   }
 
-  if (!isNonInteractive && !isActionUserDefined) {
+  if (strategy.kind === 'prompt') {
     const selected = await select({
       message: `Found ${kleur.red(existingFiles.length)} existing files for this release. What would you like to do?`,
       options: [
@@ -53,22 +57,22 @@ export async function determineActionOnExistingFiles(
     return selected as OnExistingFilesAction
   }
 
-  if (onFileExists !== undefined) {
+  if (strategy.kind === 'preset') {
     const modeText =
-      onFileExists === 'skip'
+      strategy.action === 'skip'
         ? kleur.green('Skipping existing files')
-        : onFileExists === 'replace'
+        : strategy.action === 'replace'
           ? kleur.yellow('Replacing existing files')
           : kleur.red('Aborting due to existing files')
 
     log.message(
       `📁 Found ${kleur.green(existingFiles.length)} existing files - ${modeText}`,
     )
-    return onFileExists
+    return strategy.action
   }
 
   log.warn(
     `📁 Found ${kleur.red(existingFiles.length)} existing files - skipping by default`,
   )
-  return DEFAULT_ON_FILE_EXISTS
+  return strategy.action
 }

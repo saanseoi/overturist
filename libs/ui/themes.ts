@@ -3,6 +3,7 @@ import kleur from 'kleur'
 import { note } from '../core/note'
 import type { ThemeDifferences, ThemeMapping } from '../core/types'
 import { bail } from '../core/utils'
+import { buildThemeSelectionOptions } from './themes.utils'
 
 /**
  * Builds a formatted theme-difference message.
@@ -87,22 +88,7 @@ export async function selectFeatureTypesInteractively(
   themeMapping: ThemeMapping,
   initialValues: string[] = [],
 ): Promise<string[]> {
-  const themesToFeatureTypes: Record<string, string[]> = {}
-
-  for (const [featureType, theme] of Object.entries(themeMapping)) {
-    if (!themesToFeatureTypes[theme]) {
-      themesToFeatureTypes[theme] = []
-    }
-    themesToFeatureTypes[theme].push(featureType)
-  }
-
-  const options: Record<string, Array<{ value: string; label: string }>> = {}
-  for (const [theme, featureTypes] of Object.entries(themesToFeatureTypes)) {
-    options[theme] = featureTypes.map(featureType => ({
-      value: featureType,
-      label: featureType,
-    }))
-  }
+  const options = buildThemeSelectionOptions(themeMapping)
 
   const selectedValues =
     initialValues.length > 0 ? initialValues : Object.keys(themeMapping)
