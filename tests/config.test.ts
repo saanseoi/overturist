@@ -127,7 +127,7 @@ describe('validateClipMode', () => {
   })
 
   test('falls back to preserve when clip mode is omitted', () => {
-    assert.equal(validateClipMode(undefined), 'preserve')
+    assert.equal(validateClipMode(undefined), 'smart')
   })
 })
 

@@ -104,6 +104,12 @@ async function loadProcessingModule() {
   }))
   mock.module(abs('../../libs/core/fs.ts'), () => ({
     fileExists: fileExistsMock,
+    getFeatureOutputFilename: (featureType: string, clipMode: string) =>
+      clipMode === 'preserve'
+        ? `${featureType}.preserveCrop.parquet`
+        : clipMode === 'all'
+          ? `${featureType}.containCrop.parquet`
+          : `${featureType}.parquet`,
   }))
   mock.module(abs('../../libs/data/queries.ts'), () => ({
     extractBoundsFromDivision: extractBoundsFromDivisionMock,

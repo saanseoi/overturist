@@ -88,10 +88,22 @@ async function loadQueriesModule() {
     runDuckDBQuery: runDuckDBQueryMock,
   }))
   mock.module(abs('../libs/core/fs.ts'), () => ({
+    getFeatureOutputFilename: (featureType: string, clipMode: string) =>
+      clipMode === 'preserve'
+        ? `${featureType}.preserveCrop.parquet`
+        : clipMode === 'all'
+          ? `${featureType}.containCrop.parquet`
+          : `${featureType}.parquet`,
     getOutputDir: getOutputDirMock,
     isParquetExists: isParquetExistsMock,
   }))
   mock.module(abs('../libs/core/fs'), () => ({
+    getFeatureOutputFilename: (featureType: string, clipMode: string) =>
+      clipMode === 'preserve'
+        ? `${featureType}.preserveCrop.parquet`
+        : clipMode === 'all'
+          ? `${featureType}.containCrop.parquet`
+          : `${featureType}.parquet`,
     getOutputDir: getOutputDirMock,
     isParquetExists: isParquetExistsMock,
   }))

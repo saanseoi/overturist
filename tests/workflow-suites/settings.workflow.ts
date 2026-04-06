@@ -8,6 +8,9 @@ import type { CliArgs, Config } from '../../libs/core'
 const abs = (relativePath: string) => new URL(relativePath, import.meta.url).pathname
 
 const confirmMock = mock(async () => true)
+const selectMock = mock(
+  async () => 'all' as 'older_versions' | 'all' | 'divisions_keep_search' | 'cancel',
+)
 const logState = {
   warning: mock(() => {}),
   info: mock(() => {}),
@@ -20,6 +23,7 @@ const reloadConfigMock = mock(() => {})
 async function loadSettingsModule() {
   mock.module('@clack/prompts', () => ({
     confirm: confirmMock,
+    select: selectMock,
     log: logState,
   }))
   mock.module(abs('../../libs/core/config.ts'), () => ({
@@ -59,6 +63,7 @@ function createCliArgs(overrides: Partial<CliArgs> = {}): CliArgs {
 
 beforeEach(async () => {
   confirmMock.mockClear()
+  selectMock.mockClear()
   logState.warning.mockClear()
   logState.info.mockClear()
   logState.message.mockClear()
@@ -68,6 +73,7 @@ beforeEach(async () => {
   consoleLogMock.mockClear()
 
   confirmMock.mockImplementation(async () => true)
+  selectMock.mockImplementation(async () => 'all')
   reloadConfigMock.mockImplementation(() => {})
   console.log = consoleLogMock as typeof console.log
 
@@ -181,6 +187,20 @@ describe('showCacheStats', () => {
 })
 
 describe('purgeCache', () => {
+  test('cancels without deleting the cache when purge mode selection is cancelled', async () => {
+    const { purgeCache } = await loadSettingsModule()
+    selectMock.mockImplementationOnce(async () => 'cancel')
+    await fs.mkdir(path.join(tempDir, '.cache'), { recursive: true })
+
+    await purgeCache()
+
+    await fs.access(path.join(tempDir, '.cache'))
+    assert.equal(
+      logState.info.mock.calls.some(call => /cancelled/i.test(call[0])),
+      true,
+    )
+  })
+
   test('cancels without deleting the cache when not confirmed', async () => {
     const { purgeCache } = await loadSettingsModule()
     confirmMock.mockImplementationOnce(async () => false)
@@ -197,6 +217,7 @@ describe('purgeCache', () => {
 
   test('removes the cache directory when confirmed', async () => {
     const { purgeCache } = await loadSettingsModule()
+    selectMock.mockImplementationOnce(async () => 'all')
     await fs.mkdir(path.join(tempDir, '.cache', 'v1'), { recursive: true })
     await fs.writeFile(path.join(tempDir, '.cache', 'v1', 'data.json'), '1')
 
@@ -204,5 +225,96 @@ describe('purgeCache', () => {
 
     await assert.rejects(fs.access(path.join(tempDir, '.cache')))
     assert.equal(logState.success.mock.calls.length, 1)
+  })
+
+  test('removes older version directories and keeps the newest version', async () => {
+    const { purgeCache } = await loadSettingsModule()
+    selectMock.mockImplementationOnce(async () => 'older_versions')
+
+    await fs.mkdir(path.join(tempDir, '.cache', '2026-03-18.0', 'division'), {
+      recursive: true,
+    })
+    await fs.mkdir(path.join(tempDir, '.cache', '2025-12-22.0', 'division'), {
+      recursive: true,
+    })
+    await fs.writeFile(
+      path.join(tempDir, '.cache', '2026-03-18.0', 'division', 'latest.json'),
+      '1',
+    )
+    await fs.writeFile(
+      path.join(tempDir, '.cache', '2025-12-22.0', 'division', 'older.json'),
+      '1',
+    )
+
+    await purgeCache()
+
+    await fs.access(path.join(tempDir, '.cache', '2026-03-18.0'))
+    await assert.rejects(fs.access(path.join(tempDir, '.cache', '2025-12-22.0')))
+    assert.match(String(logState.success.mock.calls[0]?.[0]), /older cached version/i)
+  })
+
+  test('warns when there are no older version directories to purge', async () => {
+    const { purgeCache } = await loadSettingsModule()
+    selectMock.mockImplementationOnce(async () => 'older_versions')
+    await fs.mkdir(path.join(tempDir, '.cache', '2026-03-18.0', 'division'), {
+      recursive: true,
+    })
+
+    await purgeCache()
+
+    await fs.access(path.join(tempDir, '.cache', '2026-03-18.0'))
+    assert.equal(confirmMock.mock.calls.length, 0)
+    assert.match(
+      String(logState.warning.mock.calls[0]?.[0]),
+      /No older cached versions/i,
+    )
+  })
+
+  test('removes mirrored divisions cache and keeps division cache plus search history', async () => {
+    const { purgeCache } = await loadSettingsModule()
+    selectMock.mockImplementationOnce(async () => 'divisions_keep_search')
+
+    await fs.mkdir(path.join(tempDir, '.cache', '2026-03-18.0', 'division'), {
+      recursive: true,
+    })
+    await fs.mkdir(
+      path.join(tempDir, '.cache', '2026-03-18.0', 'divisions', 'China', 'Hong Kong'),
+      { recursive: true },
+    )
+    await fs.mkdir(path.join(tempDir, '.cache', '2026-03-18.0', 'search', '2'), {
+      recursive: true,
+    })
+    await fs.writeFile(
+      path.join(tempDir, '.cache', '2026-03-18.0', 'division', 'division-1.json'),
+      '1',
+    )
+    await fs.writeFile(
+      path.join(
+        tempDir,
+        '.cache',
+        '2026-03-18.0',
+        'divisions',
+        'China',
+        'Hong Kong',
+        'building.parquet',
+      ),
+      '1',
+    )
+    await fs.writeFile(
+      path.join(tempDir, '.cache', '2026-03-18.0', 'search', '2', 'central.json'),
+      '1',
+    )
+
+    await purgeCache()
+
+    await fs.access(path.join(tempDir, '.cache', '2026-03-18.0', 'division'))
+    await assert.rejects(
+      fs.access(path.join(tempDir, '.cache', '2026-03-18.0', 'divisions')),
+    )
+    await fs.access(path.join(tempDir, '.cache', '2026-03-18.0', 'search', '2'))
+    assert.match(
+      String(logState.success.mock.calls[0]?.[0]),
+      /kept division cache and search history/i,
+    )
   })
 })

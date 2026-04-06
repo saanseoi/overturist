@@ -29,6 +29,14 @@ const bailFromSpinnerMock = mock(
 const successExitMock = mock((msg?: string) => {
   throw new Error(msg ?? 'successExit')
 })
+const parseNaturalDateToISOMock = mock((dateText: string) => {
+  const date = new Date(dateText)
+  if (Number.isNaN(date.getTime())) {
+    return null
+  }
+
+  return date.toISOString().slice(0, 10)
+})
 const logState = {
   message: mock(() => {}),
   warning: mock(() => {}),
@@ -89,11 +97,13 @@ async function loadReleasesModule() {
   mock.module(abs('../libs/core/utils.ts'), () => ({
     bail: bailMock,
     bailFromSpinner: bailFromSpinnerMock,
+    parseNaturalDateToISO: parseNaturalDateToISOMock,
     successExit: successExitMock,
   }))
   mock.module(abs('../libs/core/utils'), () => ({
     bail: bailMock,
     bailFromSpinner: bailFromSpinnerMock,
+    parseNaturalDateToISO: parseNaturalDateToISOMock,
     successExit: successExitMock,
   }))
   mock.module('@clack/prompts', () => ({
@@ -119,6 +129,7 @@ beforeEach(() => {
   scrapeReleaseCalendarMock.mockImplementation(async () => [])
   bailMock.mockClear()
   bailFromSpinnerMock.mockClear()
+  parseNaturalDateToISOMock.mockClear()
   successExitMock.mockClear()
   logState.message.mockClear()
   logState.warning.mockClear()
@@ -208,7 +219,7 @@ describe('initializeReleaseVersion', () => {
     assert.equal(bailFromSpinnerMock.mock.calls.length, 1)
   })
 
-  test('skips web scraping when cached latest already matches S3 latest', async () => {
+  test('re-scrapes the release calendar even when cached latest matches S3 latest', async () => {
     const { initializeReleaseVersion } = await loadReleasesModule()
     getCachedReleasesMock.mockImplementation(async () => ({
       lastUpdated: '2026-03-18T00:00:00.000Z',
@@ -220,16 +231,36 @@ describe('initializeReleaseVersion', () => {
         {
           version: '2026-03-18.0',
           date: '2026-03-18',
-          schema: '2',
+          schema: '1.16.0',
           isReleased: true,
           isAvailableOnS3: true,
         },
       ],
     }))
+    scrapeReleaseCalendarMock.mockImplementation(async () => [
+      {
+        version: '2026-03-18.0',
+        date: '2026-03-18',
+        schema: '1.16.0',
+        isReleased: true,
+        isAvailableOnS3: false,
+      },
+      {
+        version: '2026-02-18.0',
+        date: '2026-02-18',
+        schema: '1.16.0',
+        isReleased: true,
+        isAvailableOnS3: false,
+      },
+    ])
 
-    await initializeReleaseVersion(createConfig(), createCliArgs())
+    const result = await initializeReleaseVersion(createConfig(), createCliArgs())
 
-    assert.equal(scrapeReleaseCalendarMock.mock.calls.length, 0)
+    assert.equal(scrapeReleaseCalendarMock.mock.calls.length, 1)
+    assert.equal(
+      result.releaseData.releases.some(release => release.version === '2026-02-18.0'),
+      true,
+    )
   })
 
   test('falls back to S3-only data when scraping fails and still caches the merged release data', async () => {
@@ -244,7 +275,7 @@ describe('initializeReleaseVersion', () => {
         {
           version: '2025-12-22.0',
           date: '2025-12-22',
-          schema: '1',
+          schema: '1.15.0',
           isReleased: true,
           isAvailableOnS3: true,
         },
@@ -282,6 +313,73 @@ describe('initializeReleaseVersion', () => {
     )
     assert.equal(successExitMock.mock.calls.length, 1)
   })
+
+  test('preserves released history after older releases roll off S3', async () => {
+    const { initializeReleaseVersion } = await loadReleasesModule()
+    getCachedReleasesMock.mockImplementation(async () => ({
+      lastUpdated: '2026-04-06T00:00:00.000Z',
+      lastChecked: '2026-04-06T00:00:00.000Z',
+      source: 'cache',
+      latest: '2026-03-18.0',
+      totalReleases: 2,
+      releases: [
+        {
+          version: '2025-12-17.0',
+          date: '2025-12-17',
+          schema: '1',
+          isReleased: false,
+          isAvailableOnS3: false,
+        },
+        {
+          version: '2026-03-18.0',
+          date: '2026-03-18',
+          schema: '2',
+          isReleased: true,
+          isAvailableOnS3: true,
+        },
+      ],
+    }))
+    getS3ReleasesMock.mockImplementation(async () => ({
+      latest: '2026-03-18.0',
+      s3Releases: ['2026-03-18.0', '2026-02-18.0'],
+    }))
+    scrapeReleaseCalendarMock.mockImplementation(async () => [
+      {
+        version: '2026-03-18.0',
+        date: '2026-03-18',
+        schema: '1.16.0',
+        isReleased: true,
+        isAvailableOnS3: false,
+      },
+      {
+        version: '2026-02-18.0',
+        date: '2026-02-18',
+        schema: '1.16.0',
+        isReleased: true,
+        isAvailableOnS3: false,
+      },
+      {
+        version: '2025-12-17.0',
+        date: '2025-12-17',
+        schema: '1.15.0',
+        isReleased: true,
+        isAvailableOnS3: false,
+      },
+    ])
+
+    const result = await initializeReleaseVersion(createConfig(), createCliArgs())
+
+    assert.deepEqual(
+      result.releaseData.releases.find(release => release.version === '2025-12-17.0'),
+      {
+        version: '2025-12-17.0',
+        date: '2025-12-17',
+        schema: '1.15.0',
+        isReleased: true,
+        isAvailableOnS3: false,
+      },
+    )
+  })
 })
 
 describe('release context helpers', () => {
@@ -297,7 +395,7 @@ describe('release context helpers', () => {
         {
           version: '2026-03-18.0',
           date: '2026-03-18',
-          schema: '2',
+          schema: '1.16.0',
           isReleased: true,
           isAvailableOnS3: true,
         },
@@ -326,7 +424,7 @@ describe('release context helpers', () => {
         {
           version: '2025-12-22.0',
           date: '2025-12-22',
-          schema: '1',
+          schema: '1.15.0',
           isReleased: true,
           isAvailableOnS3: true,
         },
@@ -348,7 +446,7 @@ describe('release context helpers', () => {
         {
           version: '2026-03-18.0',
           date: '2026-03-18',
-          schema: '2',
+          schema: '1.16.0',
           isReleased: true,
           isAvailableOnS3: true,
         },

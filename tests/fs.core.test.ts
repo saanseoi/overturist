@@ -115,6 +115,7 @@ describe('initializeFileHandling', () => {
       false,
       [],
       '/tmp/nonexistent-output',
+      'all',
     )
 
     assert.equal(result.onFileExists, 'skip')
@@ -144,6 +145,7 @@ describe('initializeFileHandling', () => {
         undefined,
         ['building', 'address'],
         outputDir,
+        'smart',
       )
 
       assert.deepEqual(determineActionOnExistingFilesMock.mock.calls[0], [
@@ -168,6 +170,7 @@ describe('initializeFileHandling', () => {
           false,
           [],
           '/tmp/nonexistent-output',
+          'smart',
         ),
       /Aborting file handling/,
     )

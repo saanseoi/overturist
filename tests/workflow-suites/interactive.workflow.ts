@@ -28,8 +28,30 @@ const getCachedSearchResultsMock = mock(
       createdAt: string
     } | null,
 )
+const getCachedDivisionMock = mock(async () => null as Division | null)
+const getVersionsInCacheMock = mock(async () => [] as string[])
 const executeDownloadWorkflowMock = mock(async () => {})
 const resolveOptionsMock = mock(async () => createControlContext())
+const initializeReleaseVersionMock = mock(async () => ({
+  releaseVersion: '2026-03-18.0',
+  releaseData: {
+    lastUpdated: '2026-04-06T00:00:00.000Z',
+    lastChecked: '2026-04-06T00:00:00.000Z',
+    source: 'test',
+    latest: '2026-03-18.0',
+    totalReleases: 1,
+    releases: [
+      {
+        version: '2026-03-18.0',
+        date: '2026-03-18',
+        schema: '2',
+        isReleased: true,
+        isAvailableOnS3: true,
+      },
+    ],
+  },
+  releaseContext: createReleaseContext(),
+}))
 const infoCmdMock = mock(async () => {})
 const persistAndDisplayDivisionInfoMock = mock(async () => {})
 const resolveDivisionInfoContextMock = mock(async () => ({
@@ -90,10 +112,19 @@ const showPreferencesMock = mock(async () => {})
 const resetPreferencesMock = mock(async () => {})
 const showCacheStatsMock = mock(async () => {})
 const purgeCacheMock = mock(async () => {})
+const noteMock = mock(() => {})
 
 async function loadInteractiveModule() {
   mock.module(abs('../../libs/data/cache.ts'), () => ({
+    getCachedDivision: getCachedDivisionMock,
     getCachedSearchResults: getCachedSearchResultsMock,
+    getVersionsInCache: getVersionsInCacheMock,
+  }))
+  mock.module(abs('../../libs/data/releases.ts'), () => ({
+    initializeReleaseVersion: initializeReleaseVersionMock,
+  }))
+  mock.module(abs('../../libs/data/releases'), () => ({
+    initializeReleaseVersion: initializeReleaseVersionMock,
   }))
   mock.module(abs('../../libs/workflows/get.ts'), () => ({
     executeDownloadWorkflow: executeDownloadWorkflowMock,
@@ -133,6 +164,12 @@ async function loadInteractiveModule() {
     resetPreferences: resetPreferencesMock,
     showCacheStats: showCacheStatsMock,
     purgeCache: purgeCacheMock,
+  }))
+  mock.module(abs('../../libs/core/note.ts'), () => ({
+    note: noteMock,
+  }))
+  mock.module(abs('../../libs/core/note'), () => ({
+    note: noteMock,
   }))
 
   return await import(`../../libs/workflows/interactive.ts`)
@@ -210,8 +247,11 @@ function createControlContext(): ControlContext {
 
 beforeEach(() => {
   getCachedSearchResultsMock.mockClear()
+  getCachedDivisionMock.mockClear()
+  getVersionsInCacheMock.mockClear()
   executeDownloadWorkflowMock.mockClear()
   resolveOptionsMock.mockClear()
+  initializeReleaseVersionMock.mockClear()
   infoCmdMock.mockClear()
   persistAndDisplayDivisionInfoMock.mockClear()
   resolveDivisionInfoContextMock.mockClear()
@@ -229,6 +269,7 @@ beforeEach(() => {
   resetPreferencesMock.mockClear()
   showCacheStatsMock.mockClear()
   purgeCacheMock.mockClear()
+  noteMock.mockClear()
 
   getCachedSearchResultsMock.mockImplementation(async () => ({
     version: '2026-03-18.0',
@@ -238,8 +279,30 @@ beforeEach(() => {
     results: [createDivision('division-1')],
     createdAt: '2026-04-06T00:00:00.000Z',
   }))
+  getCachedDivisionMock.mockImplementation(async () => null)
+  getVersionsInCacheMock.mockImplementation(async () => [])
   executeDownloadWorkflowMock.mockImplementation(async () => {})
   resolveOptionsMock.mockImplementation(async () => createControlContext())
+  initializeReleaseVersionMock.mockImplementation(async () => ({
+    releaseVersion: '2026-03-18.0',
+    releaseData: {
+      lastUpdated: '2026-04-06T00:00:00.000Z',
+      lastChecked: '2026-04-06T00:00:00.000Z',
+      source: 'test',
+      latest: '2026-03-18.0',
+      totalReleases: 1,
+      releases: [
+        {
+          version: '2026-03-18.0',
+          date: '2026-03-18',
+          schema: '2',
+          isReleased: true,
+          isAvailableOnS3: true,
+        },
+      ],
+    },
+    releaseContext: createReleaseContext(),
+  }))
   infoCmdMock.mockImplementation(async () => {})
   persistAndDisplayDivisionInfoMock.mockImplementation(async () => {})
   resolveDivisionInfoContextMock.mockImplementation(async () => ({
@@ -276,6 +339,7 @@ beforeEach(() => {
   resetPreferencesMock.mockImplementation(async () => {})
   showCacheStatsMock.mockImplementation(async () => {})
   purgeCacheMock.mockImplementation(async () => {})
+  noteMock.mockImplementation(() => {})
 })
 
 afterEach(() => {
@@ -297,7 +361,26 @@ describe('handleMainMenu', () => {
     assert.deepEqual(resolveOptionsMock.mock.calls[0], [
       createConfig(),
       createCliArgs(),
-      { target: 'world' },
+      {
+        releaseVersion: '2026-03-18.0',
+        releaseData: {
+          lastUpdated: '2026-04-06T00:00:00.000Z',
+          lastChecked: '2026-04-06T00:00:00.000Z',
+          source: 'test',
+          latest: '2026-03-18.0',
+          totalReleases: 1,
+          releases: [
+            {
+              version: '2026-03-18.0',
+              date: '2026-03-18',
+              schema: '2',
+              isReleased: true,
+              isAvailableOnS3: true,
+            },
+          ],
+        },
+        target: 'world',
+      },
     ])
     assert.equal(executeDownloadWorkflowMock.mock.calls.length, 1)
     assert.equal(outroMock.mock.calls.length, 1)
@@ -345,6 +428,49 @@ describe('handleMainMenu', () => {
       { selectedDivision: createDivision('division-1') },
     ])
     assert.equal(executeDownloadWorkflowMock.mock.calls.length, 1)
+  })
+
+  test('bypasses the main menu when a division is supplied on the CLI', async () => {
+    const { handleMainMenu } = await loadInteractiveModule()
+
+    await handleMainMenu(
+      createConfig(),
+      createCliArgs({
+        divisionId: 'division-1',
+        divisionRequested: true,
+      }),
+    )
+
+    assert.equal(promptForMainActionMock.mock.calls.length, 0)
+    assert.deepEqual(resolveOptionsMock.mock.calls[0], [
+      createConfig(),
+      createCliArgs({
+        divisionId: 'division-1',
+        divisionRequested: true,
+      }),
+      {
+        releaseVersion: '2026-03-18.0',
+        releaseData: {
+          lastUpdated: '2026-04-06T00:00:00.000Z',
+          lastChecked: '2026-04-06T00:00:00.000Z',
+          source: 'test',
+          latest: '2026-03-18.0',
+          totalReleases: 1,
+          releases: [
+            {
+              version: '2026-03-18.0',
+              date: '2026-03-18',
+              schema: '2',
+              isReleased: true,
+              isAvailableOnS3: true,
+            },
+          ],
+        },
+        target: 'division',
+      },
+    ])
+    assert.equal(executeDownloadWorkflowMock.mock.calls.length, 1)
+    assert.equal(noteMock.mock.calls.length, 1)
   })
 
   test('reuses cached search results for repeat-info workflows without re-fetching the division', async () => {

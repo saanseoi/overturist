@@ -11,6 +11,7 @@ import {
   ensureDirectoryExists,
   ensureVersionedCacheDir,
   fileExists,
+  getFeatureOutputFilename,
   getOutputDir,
   initializeOutputDir,
   isParquetExists,
@@ -124,18 +125,31 @@ describe('getOutputDir', () => {
 })
 
 describe('filesystem helpers', () => {
+  test('builds clip-mode-aware parquet filenames', () => {
+    assert.equal(getFeatureOutputFilename('building', 'smart'), 'building.parquet')
+    assert.equal(
+      getFeatureOutputFilename('building', 'preserve'),
+      'building.preserveCrop.parquet',
+    )
+    assert.equal(
+      getFeatureOutputFilename('building', 'all'),
+      'building.containCrop.parquet',
+    )
+  })
+
   test('checks for existing parquet files by feature type', async () => {
     const outputDir = path.join(tempDir, 'existing-files')
     await ensureDirectoryExists(outputDir)
     await fs.writeFile(path.join(outputDir, 'building.parquet'), '')
-    await fs.writeFile(path.join(outputDir, 'segment.parquet'), '')
+    await fs.writeFile(path.join(outputDir, 'segment.containCrop.parquet'), '')
 
     const existing = await checkForExistingFiles(
       ['building', 'address', 'segment'],
       outputDir,
+      'all',
     )
 
-    assert.deepEqual(existing, ['building', 'segment'])
+    assert.deepEqual(existing, ['segment'])
   })
 
   test('creates output directories for the requested target', async () => {
@@ -228,10 +242,12 @@ describe('filesystem helpers', () => {
     await ensureDirectoryExists(outputDir)
     const parquetFile = path.join(outputDir, 'building.parquet')
     await fs.writeFile(parquetFile, '')
+    await fs.writeFile(path.join(outputDir, 'address.preserveCrop.parquet'), '')
 
     assert.equal(await fileExists(parquetFile), true)
     assert.equal(await fileExists(path.join(outputDir, 'missing.parquet')), false)
     assert.equal(await isParquetExists(outputDir, 'building'), true)
     assert.equal(await isParquetExists(outputDir, 'address'), false)
+    assert.equal(await isParquetExists(outputDir, 'address', 'preserve'), true)
   })
 })

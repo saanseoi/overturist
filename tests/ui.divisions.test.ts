@@ -183,9 +183,55 @@ describe('divisions utils', () => {
       '114.12346, 22.3, 114.4, 22',
     )
   })
+
+  test('sorts division results from larger subtypes to smaller ones', async () => {
+    const { sortDivisionResultsLargeToSmall } = await import(
+      new URL(
+        `../libs/ui/divisions.utils.ts?case=${Date.now()}-${Math.random()}`,
+        import.meta.url,
+      ).href
+    )
+
+    const sorted = sortDivisionResultsLargeToSmall([
+      createDivision('microhood-1', ['Hong Kong', 'Central', 'Pier'], 'microhood'),
+      createDivision('dependency-1', ['Hong Kong'], 'dependency'),
+      createDivision('neighborhood-1', ['Hong Kong', 'Mid-Levels'], 'neighborhood'),
+      createDivision('locality-1', ['Hong Kong', 'Central and Western'], 'locality'),
+    ])
+
+    assert.deepEqual(
+      sorted.map(division => division.subtype),
+      ['dependency', 'locality', 'neighborhood', 'microhood'],
+    )
+  })
 })
 
 describe('promptForDivisionSelection', () => {
+  test('sorts displayed results from larger subtypes to smaller ones', async () => {
+    const results = [
+      createDivision('microhood-1', ['Hong Kong', 'Central', 'Pier'], 'microhood'),
+      createDivision('dependency-1', ['Hong Kong'], 'dependency'),
+      createDivision('neighborhood-1', ['Hong Kong', 'Mid-Levels'], 'neighborhood'),
+    ]
+
+    const promptCalls: Array<{ options: Array<{ value: unknown }> }> = []
+    selectMock.mockImplementation(
+      async (config: { options: Array<{ value: unknown }> }) => {
+        promptCalls.push(config)
+        return config.options[0]?.value
+      },
+    )
+
+    const { promptForDivisionSelection } = await loadDivisionsModule()
+    const selected = await promptForDivisionSelection({
+      results,
+      totalCount: results.length,
+    })
+
+    assert.equal((promptCalls[0]?.options[0]?.value as Division).subtype, 'dependency')
+    assert.equal(selected.subtype, 'dependency')
+  })
+
   test('paginates through large result sets and returns the selected division', async () => {
     const results = Array.from({ length: 16 }, (_, index) =>
       createDivision(`division-${index + 1}`, [

@@ -17,6 +17,7 @@ const logState = {
 }
 
 const ENV_KEYS = [
+  'FILTER_MODE',
   'TARGET',
   'LOCALE',
   'BBOX_XMIN',
@@ -52,7 +53,7 @@ function createConfig(overrides: Partial<Config> = {}): Config {
     releaseUrl: 'https://docs.overturemaps.org/release-calendar/',
     target: 'division',
     confirmFeatureSelection: true,
-    clipMode: 'preserve',
+    clipMode: 'smart',
     ...overrides,
   }
 }
@@ -118,7 +119,7 @@ afterEach(() => {
 
 describe('config env loading', () => {
   test('reads supported environment variables into config', async () => {
-    process.env.TARGET = 'bbox'
+    process.env.FILTER_MODE = 'bbox'
     process.env.LOCALE = 'zh-hk'
     process.env.BBOX_XMIN = '114.1'
     process.env.BBOX_YMIN = '22.2'
@@ -163,7 +164,7 @@ describe('config env loading', () => {
 
   test('ignores env values when requested explicitly', async () => {
     process.env.LOCALE = 'fr'
-    process.env.TARGET = 'world'
+    process.env.FILTER_MODE = 'world'
 
     const { getConfig } = await loadConfigModule()
     const config = getConfig(true)
@@ -174,7 +175,7 @@ describe('config env loading', () => {
 
   test('reloadConfig restores defaults while ignoring env', async () => {
     process.env.LOCALE = 'fr'
-    process.env.TARGET = 'world'
+    process.env.FILTER_MODE = 'world'
 
     const { reloadConfig } = await loadConfigModule()
     const config = createConfig({ locale: 'zh-hk', target: 'bbox' })
@@ -183,7 +184,7 @@ describe('config env loading', () => {
 
     assert.equal(config.locale, 'en')
     assert.equal(config.target, 'division')
-    assert.equal(config.clipMode, 'preserve')
+    assert.equal(config.clipMode, 'smart')
     assert.equal(config.confirmFeatureSelection, true)
   })
 })
@@ -242,6 +243,44 @@ describe('initializeTarget', () => {
     )
     assert.equal(
       initializeTarget(createConfig({ target: 'world' }), createCliArgs()).target,
+      'world',
+    )
+  })
+
+  test('infers division target from division and osm relation flags', async () => {
+    const { initializeTarget } = await loadConfigModule()
+
+    assert.equal(
+      initializeTarget(
+        createConfig({ target: 'world' }),
+        createCliArgs({ divisionRequested: true }),
+      ).target,
+      'division',
+    )
+    assert.equal(
+      initializeTarget(
+        createConfig({ target: 'world' }),
+        createCliArgs({ osmIdRequested: true }),
+      ).target,
+      'division',
+    )
+  })
+
+  test('infers bbox and world targets from explicit flags', async () => {
+    const { initializeTarget } = await loadConfigModule()
+
+    assert.equal(
+      initializeTarget(
+        createConfig({ target: 'division' }),
+        createCliArgs({ bboxRequested: true }),
+      ).target,
+      'bbox',
+    )
+    assert.equal(
+      initializeTarget(
+        createConfig({ target: 'division' }),
+        createCliArgs({ world: true }),
+      ).target,
       'world',
     )
   })

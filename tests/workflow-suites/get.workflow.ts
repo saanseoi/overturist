@@ -254,6 +254,7 @@ describe('resolveOptions', () => {
       false,
       ['building'],
       '/tmp/output',
+      'preserve',
     ])
   })
 })

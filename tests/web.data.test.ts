@@ -53,7 +53,7 @@ describe('scrapeReleaseCalendar', () => {
                 <tr>
                   <td>18 April 2026</td>
                   <td><a href="/release/2026-04-18"><code>2026-04-18.0</code></a></td>
-                  <td><a href="/schema/v3"><code>v3</code></a></td>
+                  <td><a href="/schema/v1.17.0"><code>v1.17.0</code></a></td>
                 </tr>
               </tbody>
             </table>
@@ -62,7 +62,7 @@ describe('scrapeReleaseCalendar', () => {
                 <tr>
                   <td>18 March 2026</td>
                   <td><a href="/release/2026-03-18"><code>2026-03-18.0</code></a></td>
-                  <td><code>v2</code></td>
+                  <td><code>v1.16.0</code></td>
                 </tr>
               </tbody>
             </table>
@@ -77,16 +77,16 @@ describe('scrapeReleaseCalendar', () => {
       {
         date: '2026-04-18',
         version: '2026-04-18.0',
-        schema: '3',
+        schema: '1.17.0',
         isReleased: false,
         isAvailableOnS3: false,
         versionReleaseUrl: '/release/2026-04-18',
-        schemaReleaseUrl: '/schema/v3',
+        schemaReleaseUrl: '/schema/v1.17.0',
       },
       {
         date: '2026-03-18',
         version: '2026-03-18.0',
-        schema: '2',
+        schema: '1.16.0',
         isReleased: true,
         isAvailableOnS3: false,
         versionReleaseUrl: '/release/2026-03-18',
@@ -106,9 +106,9 @@ describe('scrapeReleaseCalendar', () => {
             <table><tbody><tr><td>ignore</td></tr></tbody></table>
             <table>
               <tbody>
-                <tr><td>TBA</td><td><code>2026-04-18.0</code></td><td><code>v3</code></td></tr>
-                <tr><td>not-a-date</td><td><code>2026-05-18.0</code></td><td><code>v3</code></td></tr>
-                <tr><td>18 April 2026</td><td></td><td><code>v3</code></td></tr>
+                <tr><td>TBA</td><td><code>2026-04-18.0</code></td><td><code>v1.17.0</code></td></tr>
+                <tr><td>not-a-date</td><td><code>2026-05-18.0</code></td><td><code>v1.17.0</code></td></tr>
+                <tr><td>18 April 2026</td><td></td><td><code>v1.17.0</code></td></tr>
               </tbody>
             </table>
             <table>
@@ -116,7 +116,7 @@ describe('scrapeReleaseCalendar', () => {
                 <tr>
                   <td>18 March 2026</td>
                   <td><code>2026-03-18.0</code></td>
-                  <td><code>v2</code></td>
+                  <td><code>v1.16.0</code></td>
                 </tr>
               </tbody>
             </table>
@@ -171,8 +171,8 @@ describe('scrapeReleaseCalendar', () => {
         <html>
           <body>
             <table><tbody><tr><td>ignore</td></tr></tbody></table>
-            <table><tbody><tr><td>TBA</td><td><code>2026-04-18.0</code></td><td><code>v3</code></td></tr></tbody></table>
-            <table><tbody><tr><td>invalid</td><td><code>2026-03-18.0</code></td><td><code>v2</code></td></tr></tbody></table>
+            <table><tbody><tr><td>TBA</td><td><code>2026-04-18.0</code></td><td><code>v1.17.0</code></td></tr></tbody></table>
+            <table><tbody><tr><td>invalid</td><td><code>2026-03-18.0</code></td><td><code>v1.16.0</code></td></tr></tbody></table>
           </body>
         </html>
       `,
