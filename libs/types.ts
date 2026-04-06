@@ -169,7 +169,9 @@ export type DivisionOption = { value: Division | string; label: string; hint: st
 export interface ProgressState {
   bboxComplete: boolean
   geomComplete: boolean
+  hasGeometryPass: boolean
   isProcessing: boolean
+  activeStage: 'bbox' | 'geometry' | null
   featureCount: number
   diffCount: number | null // Difference from previous version
 }
