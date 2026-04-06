@@ -1,13 +1,27 @@
 {
-  "name": "overturist",
-  "version": "0.0.1",
+  "name": "@saanseoi/overturist",
+  "version": "0.1.0",
   "description": "CLI to obtain Overture Maps data from S3",
-  "repository": "git@github.com:saanseoi/overturist.git",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/saanseoi/overturist.git"
+  },
   "bugs": {
     "url": "https://github.com/saanseoi/overturist/issues"
   },
   "homepage": "https://github.com/saanseoi/overturist#readme",
   "main": "overturist.ts",
+  "directories": {
+    "bin": "bin"
+  },
+  "files": [
+    "bin",
+    "overturist.ts",
+    "libs",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
   "scripts": {
     "typecheck": "tsc --noEmit --project .",
     "test": "bun test",
@@ -19,15 +33,31 @@
     "check": "biome check .",
     "check:fix": "biome check --write .",
     "check:migrate": "biome migrate --write",
-    "prepare": "husky"
+    "prepare": "husky",
+    "publish:dry-run": "npm publish --dry-run --access public"
   },
   "keywords": [
-    "Overture Maps",
-    "Geospatial",
-    "CLI"
+    "overture-maps",
+    "geospatial",
+    "cli",
+    "bun",
+    "duckdb"
   ],
   "author": "Mart van de Ven",
+  "license": "MIT",
   "packageManager": "bun@1.3.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "bun": ">=1.3.0"
+  },
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1024.0",
     "@bomb.sh/args": "^0.3.1",
