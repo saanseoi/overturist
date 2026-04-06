@@ -1,6 +1,15 @@
 import type { BBox, Division, ThemeDifferences, ThemeMapping } from './types'
 
 /**
+ * Validates that a value is a finite number for bbox normalization.
+ * @param value - Raw coordinate value
+ * @returns True when the value is a finite number
+ */
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+/**
  * RELEASES
  */
 
@@ -105,11 +114,12 @@ export function normalizeBBox(value: unknown): BBox | undefined {
   const record = value as Record<string, unknown>
   const { xmin, ymin, xmax, ymax } = record
 
-  if (![xmin, ymin, xmax, ymax].every(coord => typeof coord === 'number')) {
-    return undefined
-  }
-
-  if (![xmin, ymin, xmax, ymax].every(coord => Number.isFinite(coord))) {
+  if (
+    !isFiniteNumber(xmin) ||
+    !isFiniteNumber(ymin) ||
+    !isFiniteNumber(xmax) ||
+    !isFiniteNumber(ymax)
+  ) {
     return undefined
   }
 
