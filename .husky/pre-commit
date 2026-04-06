@@ -1,1 +1,67 @@
-bun run check
+# Check if we're trying to create a merge commit
+if [ -f "$(git rev-parse --git-dir)/MERGE_HEAD" ]; then
+    echo "Merge commits are not allowed. Please use rebase instead."
+    exit 1
+fi
+
+# Get list of staged files
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR)
+
+if [ -n "$STAGED_FILES" ]; then
+    echo "🎨 Running biome on staged files..."
+    
+    # Get only the staged files that biome supports
+    BIOME_FILES=""
+    for file in $STAGED_FILES; do
+        case "$file" in
+            *.js|*.jsx|*.ts|*.tsx|*.json|*.css|*.svelte)
+                if [ -f "$file" ]; then
+                    BIOME_FILES="$BIOME_FILES $file"
+                fi
+                ;;
+        esac
+    done
+
+    if [ -n "$BIOME_FILES" ]; then
+        # Run biome check with --write on staged files only
+        set +e
+        BIOME_OUTPUT=$(bun x biome check --write $BIOME_FILES 2>&1)
+        BIOME_STATUS=$?
+        set -e
+
+        if [ $BIOME_STATUS -ne 0 ]; then
+            if echo "$BIOME_OUTPUT" | grep -q "No files were processed in the specified paths."; then
+                echo "ℹ️  Biome had no matching files to process."
+            else
+                echo "$BIOME_OUTPUT"
+                exit $BIOME_STATUS
+            fi
+        fi
+        
+        # Check if any staged files were modified by formatting
+        MODIFIED_FILES=$(git diff --name-only)
+        MODIFIED_STAGED=""
+        for file in $STAGED_FILES; do
+            if echo "$MODIFIED_FILES" | grep -qF "$file"; then
+                MODIFIED_STAGED="$MODIFIED_STAGED $file"
+            fi
+        done
+        
+        if [ -n "$MODIFIED_STAGED" ]; then
+            echo ""
+            echo "❌ Biome modified some of your staged files:"
+            echo "$MODIFIED_STAGED" | tr ' ' '\n' | grep -v '^$' | sed 's/^/  - /'
+            echo ""
+            echo "📝 Please review the changes and re-stage the files:"
+            echo "   git add <files>    # Re-stage the files you want to commit"
+            echo "   git commit         # Try committing again"
+            echo ""
+            echo "💡 Or to stage all formatting changes:"
+            echo "   git add .          # Stage all changes including formatting"
+            echo "   git commit         # Try committing again"
+            exit 1
+        fi
+    fi
+fi
+
+echo "✅ Pre-commit checks passed!"
