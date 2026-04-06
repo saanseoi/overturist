@@ -36,11 +36,14 @@ export async function initializeReleaseVersion(
   const s = spinner()
   s.start('Resolving versions')
 
-  const releaseData = await fetchLatestVersions(config)
+  const releaseData =
+    interactiveOpts && interactiveOpts.releaseData
+      ? interactiveOpts.releaseData
+      : await fetchLatestVersions(config)
 
   // Count the number of releases available on S3
   const availableOnS3Count = releaseData.releases.filter(
-    release => release.isAvailableOnS3,
+    (release: OvertureRelease) => release.isAvailableOnS3,
   ).length
   s.stop(
     `Found ${kleur.green(releaseData.releases.length)} releases (${kleur.green(availableOnS3Count)} available on S3)`,
@@ -80,8 +83,8 @@ export async function initializeReleaseVersion(
   const selectedRelease = findRelease(releaseData, releaseVersion)
   if (!selectedRelease?.isAvailableOnS3) {
     const availableVersions = releaseData.releases
-      .filter(release => release.isAvailableOnS3)
-      .map(release => kleur.green(release.version))
+      .filter((release: OvertureRelease) => release.isAvailableOnS3)
+      .map((release: OvertureRelease) => kleur.green(release.version))
       .slice(0, 10)
       .join(', ')
     bailFromSpinner(
@@ -174,18 +177,13 @@ async function fetchLatestVersions(config: Config): Promise<ReleaseData> {
       successExit()
     }
 
-    // Only scrape the release calendar if S3 has a newer version than we've cached
     let webReleases: OvertureRelease[] = []
-    const shouldScrape = latestS3Release && existingData.latest !== latestS3Release
-
-    if (shouldScrape) {
-      try {
-        webReleases = await scrapeReleaseCalendar(config)
-      } catch (webError) {
-        log.warning(
-          `Web scraping failed: ${(webError as Error).message}. Using S3 data as fallback.`,
-        )
-      }
+    try {
+      webReleases = await scrapeReleaseCalendar(config)
+    } catch (webError) {
+      log.warning(
+        `Web scraping failed: ${(webError as Error).message}. Using S3 data as fallback.`,
+      )
     }
 
     const { releases, isUpdated } = mergeReleases(
@@ -286,25 +284,26 @@ function mergeReleases(
   // Initialize merged map with existing releases, update availability
   for (const release of existing) {
     const validatedRelease = ensureAvailability(release, availableVersions)
-    // Either it has become available, or it has been removed
-    if (release.isAvailableOnS3 !== validatedRelease.isAvailableOnS3) {
+    // Repair legacy cache entries whose release status was incorrectly tied to S3 availability.
+    if (
+      release.isAvailableOnS3 !== validatedRelease.isAvailableOnS3 ||
+      release.isReleased !== validatedRelease.isReleased
+    ) {
       isUpdated = true
     }
     merged.set(release.version, validatedRelease)
   }
 
   for (const release of webReleases) {
+    const mergedRelease = merged.get(release.version)
+    const validatedRelease = ensureAvailability(release, availableVersions)
+
     if (
-      !merged.has(release.version) ||
-      merged.get(release.version)?.schema === 'Unknown' ||
-      merged.get(release.version)?.versionReleaseUrl === undefined ||
-      merged.get(release.version)?.schemaReleaseUrl === undefined
+      !mergedRelease ||
+      shouldReplaceWithWebRelease(mergedRelease, validatedRelease)
     ) {
-      // Upcoming releases are published on the web first, merge them in, or if the schema was previously unknown, update it
-      merged.set(release.version, ensureAvailability(release, availableVersions))
-      isUpdated = true
-    } else if (merged.get(release.version)?.date !== release.date) {
-      merged.set(release.version, ensureAvailability(release, availableVersions))
+      // The release calendar is authoritative for dates, schema versions, release state, and release-note links.
+      merged.set(release.version, validatedRelease)
       isUpdated = true
     }
   }
@@ -368,11 +367,32 @@ function ensureAvailability(
   release: OvertureRelease,
   availableVersions: Set<Version>,
 ): OvertureRelease {
+  const isAvailableOnS3 = availableVersions.has(release.version)
+
   return {
     ...release,
-    isReleased: availableVersions.has(release.version),
-    isAvailableOnS3: availableVersions.has(release.version),
+    isReleased: release.isReleased || isAvailableOnS3,
+    isAvailableOnS3,
   }
+}
+
+/**
+ * Determines whether authoritative release-calendar data should replace a merged release entry.
+ * @param existingRelease - Existing merged release entry
+ * @param webRelease - Normalized release entry scraped from the release calendar
+ * @returns True when the web entry contains newer or corrected metadata
+ */
+function shouldReplaceWithWebRelease(
+  existingRelease: OvertureRelease,
+  webRelease: OvertureRelease,
+): boolean {
+  return (
+    existingRelease.date !== webRelease.date ||
+    existingRelease.schema !== webRelease.schema ||
+    existingRelease.isReleased !== webRelease.isReleased ||
+    existingRelease.versionReleaseUrl !== webRelease.versionReleaseUrl ||
+    existingRelease.schemaReleaseUrl !== webRelease.schemaReleaseUrl
+  )
 }
 
 /**
