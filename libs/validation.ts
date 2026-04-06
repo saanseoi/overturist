@@ -1,5 +1,4 @@
-import { getFeatureTypesForVersion } from "./s3";
-import type { ThemeDifferences, ThemeMapping, Version } from "./types";
+import type { BBox, Division, ThemeDifferences, ThemeMapping } from './types'
 
 /**
  * RELEASES
@@ -12,37 +11,37 @@ import type { ThemeDifferences, ThemeMapping, Version } from "./types";
  * @returns Object indicating if version is valid and available versions
  */
 export function validateReleaseVersion(
-    version: string,
-    availableVersions: string[],
+  version: string,
+  availableVersions: string[],
 ): { isValid: boolean; availableVersions: string[]; message?: string } {
-    if (!version) {
-        return {
-            isValid: false,
-            availableVersions,
-            message: "No version specified",
-        };
-    }
-
-    if (availableVersions.length === 0) {
-        return {
-            isValid: false,
-            availableVersions,
-            message: "No versions available on S3",
-        };
-    }
-
-    if (!availableVersions.includes(version)) {
-        return {
-            isValid: false,
-            availableVersions,
-            message: `Version "${version}" is not available on S3. Available versions: ${availableVersions.join(", ")}`,
-        };
-    }
-
+  if (!version) {
     return {
-        isValid: true,
-        availableVersions,
-    };
+      isValid: false,
+      availableVersions,
+      message: 'No version specified',
+    }
+  }
+
+  if (availableVersions.length === 0) {
+    return {
+      isValid: false,
+      availableVersions,
+      message: 'No versions available on S3',
+    }
+  }
+
+  if (!availableVersions.includes(version)) {
+    return {
+      isValid: false,
+      availableVersions,
+      message: `Version "${version}" is not available on S3. Available versions: ${availableVersions.join(', ')}`,
+    }
+  }
+
+  return {
+    isValid: true,
+    availableVersions,
+  }
 }
 
 /**
@@ -50,110 +49,88 @@ export function validateReleaseVersion(
  */
 
 /**
- * Validates selected themes and types against the current theme mapping.
- * @param version - The release version to validate against
- * @param selectedThemes - Optional array of themes to validate
- * @param selectedTypes - Optional array of feature types to validate
- * @param themeMapping - Current theme mapping
- * @returns Promise resolving to validation result
+ * Compares two theme mappings and identifies differences.
+ * @param currentThemeMapping - Current theme mapping to compare
+ * @param precedingThemeMapping - Preceding theme mapping to compare against
+ * @returns Object containing added, removed, and reassigned feature types
+ * @remarks A difference is reported when a feature type is missing in either mapping
+ * or when the same feature type points to a different theme between releases.
  */
-export async function validateThemesAndTypes(
-    _version: Version,
-    selectedThemes?: string[],
-    selectedTypes?: string[],
-    themeMapping?: ThemeMapping,
-): Promise<{ isValid: boolean; errors: string[] }> {
-    const errors: string[] = [];
-
-    if (!themeMapping) {
-        return { isValid: false, errors: ["No theme mapping available"] };
-    }
-
-    // Get available themes and types from current mapping
-    const availableThemes = new Set(Object.values(themeMapping));
-    const availableTypes = new Set(Object.keys(themeMapping));
-
-    // Validate selected themes
-    if (selectedThemes) {
-        for (const theme of selectedThemes) {
-            if (!availableThemes.has(theme)) {
-                errors.push(`Invalid theme: ${theme}`);
-            }
-        }
-    }
-
-    // Validate selected types
-    if (selectedTypes) {
-        for (const type of selectedTypes) {
-            if (!availableTypes.has(type)) {
-                errors.push(`Invalid feature type: ${type}`);
-            }
-        }
-    }
-
-    return {
-        isValid: errors.length === 0,
-        errors,
-    };
-}
-
-/**
- * Validates the local theme mapping against what's available on S3 for a given version.
- * @param version - The release version to validate against
- * @param localThemeMapping - Local theme mapping from theme_mapping.json
- * @returns Promise resolving to validation result with isValid flag and differences if invalid
- */
-export async function validateThemeMappingAgainstS3(
-    version: Version,
-    localThemeMapping: ThemeMapping,
-): Promise<{
-    isValid: boolean;
-    themeMapping: ThemeMapping;
-    differences?: ThemeDifferences;
-}> {
-    try {
-        // Fetch feature types from S3
-        const s3FeatureTypes = await getFeatureTypesForVersion(version);
-
-        // Compare local mapping with S3 availability
-        const differences = compareThemesWithS3(localThemeMapping, s3FeatureTypes);
-
-        // Return validation result
-        return {
-            isValid: !differences.hasDifferences,
-            themeMapping: localThemeMapping,
-            differences: differences.hasDifferences ? differences : undefined,
-        };
-    } catch (error) {
-        throw new Error(`Theme validation failed: ${error instanceof Error ? error.message : "Unknown error"}`);
-    }
-}
-
-/**
- * Compares local theme mapping with S3 feature types and identifies differences.
- * @param localThemeMapping - Local theme mapping from theme_mapping.json
- * @param s3FeatureTypes - Feature types available on S3
- * @returns Object containing differences and whether any exist
- */
-export function compareThemesWithS3(
-    localThemeMapping: ThemeMapping,
-    s3FeatureTypes: { [theme: string]: string[] },
+export function compareThemeMappings(
+  currentThemeMapping: ThemeMapping,
+  precedingThemeMapping: ThemeMapping,
 ): ThemeDifferences {
-    const localTypes = Object.keys(localThemeMapping);
-    const s3Types: string[] = [];
+  const currentTypes = Object.keys(currentThemeMapping)
+  const precedingTypes = Object.keys(precedingThemeMapping)
 
-    // Flatten all feature types from all themes on S3
-    for (const theme of Object.keys(s3FeatureTypes)) {
-        s3Types.push(...s3FeatureTypes[theme]);
-    }
+  const missingFromCurrent = precedingTypes.filter(type => !currentTypes.includes(type))
+  const missingFromPreceding = currentTypes.filter(
+    type => !precedingTypes.includes(type),
+  )
+  // Flag feature types that still exist but were reassigned to a different theme.
+  const changedThemes = currentTypes
+    .filter(
+      type =>
+        type in precedingThemeMapping &&
+        currentThemeMapping[type] !== precedingThemeMapping[type],
+    )
+    .map(type => ({
+      type,
+      currentTheme: currentThemeMapping[type],
+      precedingTheme: precedingThemeMapping[type],
+    }))
 
-    // Find differences
-    const missingFromLocal = s3Types.filter((type) => !localTypes.includes(type));
-    const missingFromS3 = localTypes.filter((type) => !s3Types.includes(type));
+  return {
+    missingFromCurrent,
+    missingFromPreceding,
+    changedThemes,
+    hasDifferences:
+      missingFromCurrent.length > 0 ||
+      missingFromPreceding.length > 0 ||
+      changedThemes.length > 0,
+  }
+}
 
-    return {
-        missingFromLocal,
-        missingFromS3,
-        hasDifferences: missingFromLocal.length > 0 || missingFromS3.length > 0,
-    };
+/**
+ * Normalizes raw bbox input to the canonical `xmin/ymin/xmax/ymax` shape.
+ * @param value - Raw bbox-like value from DuckDB or cached JSON
+ * @returns Canonical bbox when all coordinates are present and finite numbers, otherwise undefined
+ * @remarks Legacy `minx/miny/maxx/maxy` aliases and numeric string coercion are rejected.
+ */
+export function normalizeBBox(value: unknown): BBox | undefined {
+  if (typeof value !== 'object' || value === null) {
+    return undefined
+  }
+
+  const record = value as Record<string, unknown>
+  const { xmin, ymin, xmax, ymax } = record
+
+  if (![xmin, ymin, xmax, ymax].every(coord => typeof coord === 'number')) {
+    return undefined
+  }
+
+  if (![xmin, ymin, xmax, ymax].every(coord => Number.isFinite(coord))) {
+    return undefined
+  }
+
+  return { xmin, ymin, xmax, ymax }
+}
+
+/**
+ * Normalizes a division record so downstream code can rely on a validated bbox shape.
+ * @param division - Division record from DuckDB or cache
+ * @returns Division with bbox preserved only when it already matches the canonical shape
+ * @remarks Invalid or legacy bbox payloads are left unchanged so callers can decide how to handle them.
+ */
+export function normalizeDivisionBBox<T extends Division>(division: T): T {
+  const bbox = normalizeBBox(division.bbox)
+
+  if (!division.bbox || !bbox) {
+    return division
+  }
+
+  return {
+    ...division,
+    bbox,
+  }
 }

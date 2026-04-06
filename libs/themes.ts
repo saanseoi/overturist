@@ -1,74 +1,148 @@
-import { log, spinner } from "@clack/prompts";
-import kleur from "kleur";
-import { cacheThemeMapping, getCachedThemeMapping, getVersionsInCache } from "./cache";
-import { handleThemeAction } from "./interactive";
-import { getFeatureTypesForVersion } from "./s3";
-import type { ReleaseData, ThemeMapping, Version } from "./types";
-import { bailFromSpinner } from "./utils";
-import { validateThemeMappingAgainstS3, validateThemesAndTypes } from "./validation";
+import { log, spinner } from '@clack/prompts'
+import kleur from 'kleur'
+import { cacheThemeMapping, getCachedThemeMapping } from './cache'
+import { getPrecedingReleaseVersion } from './releases'
+import { getFeatureTypesForVersion } from './s3'
+import type {
+  CliArgs,
+  Config,
+  InteractiveOptions,
+  ReleaseData,
+  Spinner,
+  ThemeMapping,
+  Version,
+} from './types'
+import { promptUserForThemeAction, selectFeatureTypesInteractively } from './ui'
+import { failedExit } from './utils'
+import { compareThemeMappings } from './validation'
 
 /**
- * Initializes theme mapping for a given release version with comprehensive validation and fallback logic.
- * @param version - The target release version
- * @param releaseData - Release data for fallback theme mapping creation
- * @param selectedThemes - Optional array of themes to filter by
- * @param selectedTypes - Optional array of feature types to filter by
- * @returns Promise resolving to initialized and validated theme mapping
+ * THEME MAPPING
+ */
+
+/**
+ * Initializes the theme mapping by loading existing or creating new mapping from S3 data.
+ * @param config - Configuration object
+ * @param cliArgs - Command line arguments
+ * @param interactiveOpts - Interactive options (undefined = use defaults, false = non-interactive)
+ * @param releaseVersion - Release version to initialize theme mapping for
+ * @param releaseData - Release data containing version information
+ * @returns Promise resolving to theme mapping and filtered feature types
  */
 export async function initializeThemeMapping(
-    version: Version,
-    releaseData: ReleaseData,
-    selectedThemes?: string[],
-    selectedTypes?: string[],
+  releaseVersion: Version,
+  releaseData: ReleaseData,
+  config: Config,
+  cliArgs: CliArgs,
+  interactiveOpts?: InteractiveOptions | false,
 ): Promise<{
-    themeMapping: ThemeMapping;
-    featureTypes: string[];
+  themeMapping: ThemeMapping
+  featureTypes: string[]
 }> {
-    // Load existing theme mapping or create if it doesn't exist
-    const themeMapping = await loadOrCreateThemeMapping(version, releaseData);
+  const s = spinner()
+  s.start('Resolving theme mapping')
+  let wasSpinnerStopped = false
 
-    // Validate and apply filters if provided
-    return await ensureValidThemeMapping(version, themeMapping, selectedThemes, selectedTypes);
+  // Step 1: Load or create theme mapping for selected version
+  const { themeMapping, isNew, precedingThemeMapping } = await loadOrCreateThemeMapping(
+    releaseVersion,
+    releaseData,
+    s,
+  )
+
+  // Step 2: Validate theme mapping against previous version if this is a new version
+  if (isNew && precedingThemeMapping) {
+    wasSpinnerStopped = await validateThemeMappingAgainstPrevious(
+      releaseVersion,
+      themeMapping,
+      precedingThemeMapping,
+      s,
+    )
+  } else if (isNew) {
+    log.warn(
+      'Cannot validate without prior version. Confirm S3 release is complete and accessible.',
+    )
+  }
+
+  if (!wasSpinnerStopped) {
+    s.stop(
+      `Validated theme mapping : ${kleur.green(new Set(Object.values(themeMapping)).size)} themes and ${kleur.green(Object.keys(themeMapping).length)} types`,
+    )
+  }
+
+  // Step 3: Determine which feature types to include
+  const featureTypes = await selectFeatureTypes(
+    themeMapping,
+    config,
+    cliArgs,
+    interactiveOpts,
+  )
+
+  return { themeMapping, featureTypes }
 }
 
 /**
- * Updates the theme mapping file to reflect S3 availability.
- * @param s3FeatureTypes - Feature types available on S3
- * @param version - Release version to cache the theme mapping for
- * @returns Promise that resolves when the mapping has been updated
+ * THEME MAPPING :: UTILS
  */
-export async function updateThemeMappingFromS3(
-    s3FeatureTypes: { [theme: string]: string[] },
-    version: string,
-): Promise<ThemeMapping> {
-    try {
-        // Create new mapping based on S3
-        const newThemeMapping: ThemeMapping = {};
 
-        // For each theme and its types, add to mapping
-        for (const theme of Object.keys(s3FeatureTypes)) {
-            for (const type of s3FeatureTypes[theme]) {
-                // Use the theme name as the display name
-                newThemeMapping[type] = theme;
-            }
-        }
-
-        // Sort the theme mapping keys alphabetically before saving
-        const sortedThemeMapping: ThemeMapping = {};
-        const sortedKeys = Object.keys(newThemeMapping).sort();
-
-        for (const key of sortedKeys) {
-            sortedThemeMapping[key] = newThemeMapping[key];
-        }
-
-        await cacheThemeMapping(version, sortedThemeMapping);
-        log.success(`Updated with ${Object.keys(sortedThemeMapping).length} feature types from S3`);
-
-        return sortedThemeMapping;
-    } catch (error) {
-        log.error(`${kleur.red("Failed")} to update theme mapping`);
-        throw error;
+/**
+ * Loads theme mapping for a given version or creates it if it doesn't exist.
+ * @param version - The target release version
+ * @param releaseData - Release data for fallback theme mapping creation
+ * @returns Promise resolving to loaded or created theme mapping
+ */
+async function loadOrCreateThemeMapping(
+  version: Version,
+  releaseData: ReleaseData,
+  spinner: Spinner,
+): Promise<{
+  themeMapping: ThemeMapping
+  isNew: boolean
+  precedingThemeMapping?: ThemeMapping | null
+}> {
+  // Strategy 1: Check if theme_mapping.json exists in cache for this version
+  try {
+    const cachedMapping = await getCachedThemeMapping(version)
+    // Step 1. Version is considered validated and can be used as is
+    if (cachedMapping) {
+      return {
+        themeMapping: cachedMapping,
+        isNew: false,
+      }
     }
+  } catch {
+    // Cache doesn't exist, proceed to create new mapping
+  }
+
+  // Strategy 2. No cached mapping exists, need to create new theme_mapping.json for this version
+  spinner.message('Creating new theme mapping')
+
+  // Step 1: Get the preceding version
+  const precedingVersion = getPrecedingReleaseVersion(version, releaseData)
+  if (!precedingVersion) {
+    // No preceding version, create mapping from current version (don't cache yet)
+    const themeMapping = await getOrCreateThemeMapping(version, false)
+    return {
+      themeMapping,
+      isNew: true,
+      precedingThemeMapping: null,
+    }
+  }
+
+  // Step 2: Ensure preceding version mapping exists (always cache preceding versions)
+  // The preceding version is always stable on S3 - i.e. we don't run the
+  // risk that we are building a mapping while the directories are still
+  // being uploaded.
+  const precedingThemeMapping = await getOrCreateThemeMapping(precedingVersion, true)
+
+  // Step 4: Create mapping for selected version (don't cache yet)
+  const selectedThemeMapping = await getOrCreateThemeMapping(version, false)
+
+  return {
+    themeMapping: selectedThemeMapping,
+    isNew: true,
+    precedingThemeMapping,
+  }
 }
 
 /**
@@ -77,259 +151,245 @@ export async function updateThemeMappingFromS3(
  * @returns Promise resolving to ThemeMapping object
  */
 async function createThemeMappingFromVersion(version: Version): Promise<ThemeMapping> {
-    const s3FeatureTypes = await getFeatureTypesForVersion(version);
-    const themeMapping: ThemeMapping = {};
+  const s3FeatureTypes = await getFeatureTypesForVersion(version)
+  const themeMapping: ThemeMapping = {}
 
-    // Create mapping from feature types to themes
-    for (const [theme, featureTypes] of Object.entries(s3FeatureTypes)) {
-        for (const featureType of featureTypes) {
-            themeMapping[featureType] = theme;
-        }
+  // Create mapping from feature types to themes
+  for (const [theme, featureTypes] of Object.entries(s3FeatureTypes)) {
+    for (const featureType of featureTypes) {
+      themeMapping[featureType] = theme
     }
+  }
 
-    return themeMapping;
+  return themeMapping
 }
 
 /**
- * Filters feature types based on selected themes and types.
- * @param featureTypes - All available feature types
- * @param themeMapping - Mapping of feature types to themes
- * @param selectedThemes - Optional array of themes to filter by
- * @param selectedTypes - Optional array of feature types to filter by
- * @returns Filtered array of feature types
- */
-function filterFeatureTypes(
-    featureTypes: string[],
-    themeMapping: ThemeMapping,
-    selectedThemes?: string[],
-    selectedTypes?: string[],
-): string[] {
-    const filteredTypes = new Set<string>();
-
-    // If specific types are requested, include them
-    if (selectedTypes && selectedTypes.length > 0) {
-        for (const type of selectedTypes) {
-            if (featureTypes.includes(type)) {
-                filteredTypes.add(type);
-            }
-        }
-    }
-
-    // If specific themes are requested, include all types from those themes
-    if (selectedThemes && selectedThemes.length > 0) {
-        for (const [featureType, theme] of Object.entries(themeMapping)) {
-            if (selectedThemes.includes(theme) && featureTypes.includes(featureType)) {
-                filteredTypes.add(featureType);
-            }
-        }
-    }
-
-    // Return the union of all matching types
-    return Array.from(filteredTypes);
-}
-
-/**
- * Creates a theme mapping from the second-most recent version when no theme mapping is available.
- * @param releaseData - Release data containing available releases
+ * Gets a theme mapping from cache or creates a new one, optionally caching it.
+ * @param version - The release version to get or create theme mapping for
+ * @param cache - Whether to cache the created theme mapping (default: false)
  * @returns Promise resolving to ThemeMapping object
  */
-async function createThemeMappingFromSecondMostRecentVersion(releaseData: ReleaseData): Promise<ThemeMapping> {
-    const availableVersions = releaseData.releases
-        .filter((release) => release.isAvailableOnS3)
-        .sort((a, b) => b.version.localeCompare(a.version)); // Sort by version, most recent first
-
-    if (availableVersions.length < 2) {
-        // If we don't have at least 2 versions, use the most recent one
-        if (availableVersions.length === 1) {
-            return await createThemeMappingFromVersion(availableVersions[0].version);
-        }
-        throw new Error("No releases available on S3 to create theme mapping from");
-    }
-
-    // Use the second-most recent version
-    const secondMostRecentVersion = availableVersions[1].version;
-    return await createThemeMappingFromVersion(secondMostRecentVersion);
-}
-
-/**
- * Loads the theme mapping from cache for a specific version.
- * @param version - The release version to get theme mapping for
- * @returns Promise resolving to ThemeMapping object containing feature type to name mappings
- * @throws Error if no theme mapping is available for the specified version
- */
-async function loadThemeMapping(version: string): Promise<ThemeMapping> {
-    // Try to load from cache first if version is provided
-    const cachedMapping = await getCachedThemeMapping(version);
-    if (cachedMapping) {
-        return cachedMapping;
-    }
-
-    // No theme mapping available
-    throw new Error("No theme mapping available");
-}
-
-/**
- * Loads the most recent theme mapping from available cached versions.
- * @returns Promise resolving to ThemeMapping object from most recent cached version, or null if no cache exists
- */
-async function loadMostRecentThemeMapping(): Promise<ThemeMapping | null> {
-    const cachedVersions = await getVersionsInCache();
-    if (cachedVersions.length === 0) {
-        return null;
-    }
-
-    // Try the most recent version first
-    return await loadThemeMapping(cachedVersions[0]);
-}
-
-/**
- * Loads theme mapping for a given version or creates it if it doesn't exist.
- * @param version - The target release version
- * @param releaseData - Release data for fallback theme mapping creation
- * @returns Promise resolving to loaded or created theme mapping
- */
-async function loadOrCreateThemeMapping(version: Version, releaseData: ReleaseData): Promise<ThemeMapping> {
-    // Try to load existing theme mapping for the target version
-    try {
-        return await loadThemeMapping(version);
-    } catch {
-        // No cached mapping exists, create from second-most recent version
-        const createSpinner = spinner();
-        createSpinner.start("Creating theme mapping from second-most recent version");
-        try {
-            const themeMapping = await createThemeMappingFromSecondMostRecentVersion(releaseData);
-            await cacheThemeMapping(version, themeMapping);
-            createSpinner.stop(`Created theme mapping with ${Object.keys(themeMapping).length} feature types`);
-            return themeMapping;
-        } catch (error) {
-            bailFromSpinner(
-                createSpinner,
-                "Failed to create theme mapping",
-                `Theme mapping creation failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-            );
-        }
-    }
-}
-
-/**
- * Gets a validated theme mapping, handling validation differences with user interaction.
- * @param version - The release version to validate against
- * @param themeMapping - Local theme mapping to validate
- * @param validationSpinner - Spinner instance to use for validation feedback
- * @returns Promise resolving to validated theme mapping
- */
-async function getValidThemeMapping(
-    version: Version,
-    themeMapping: ThemeMapping,
-    validationSpinner: ReturnType<typeof spinner>,
+async function getOrCreateThemeMapping(
+  version: Version,
+  cache: boolean = false,
 ): Promise<ThemeMapping> {
-    const validationResult = await validateThemeMappingAgainstS3(version, themeMapping);
+  // First check if it already exists in cache
+  const cachedMapping = await getCachedThemeMapping(version)
+  if (cachedMapping) {
+    return cachedMapping
+  }
 
-    if (validationResult.isValid) {
-        validationSpinner.stop("Themes and feature types validated");
-        return themeMapping;
-    } else {
-        // Stop spinner and handle differences
-        validationSpinner.stop(`${kleur.red("FAILED")} Themes and feature types validation`, 1);
+  // Create new theme mapping
+  const themeMapping = await createThemeMappingFromVersion(version)
 
-        // Show UI and get user action
-        const action = await promptUserForThemeAction(validationResult.differences!);
+  // Optionally cache it
+  if (cache) {
+    await cacheThemeMapping(version, themeMapping)
+  }
 
-        // Handle the chosen action
-        const updatedThemeMapping = await handleThemeAction(action, await getFeatureTypesForVersion(version), version);
-
-        // Return the updated mapping if it was updated, otherwise return the original
-        return updatedThemeMapping || themeMapping;
-    }
+  return themeMapping
 }
 
 /**
- * Ensures theme mapping is valid and applies filters if provided.
- * @param version - The release version
- * @param themeMapping - The theme mapping to validate and filter
- * @param selectedThemes - Optional array of themes to filter by
- * @param selectedTypes - Optional array of feature types to filter by
- * @returns Promise resolving to validated and filtered theme mapping with feature types
+ * Validates theme mapping against previous version and caches if needed.
  */
-async function ensureValidThemeMapping(
-    version: Version,
-    themeMapping: ThemeMapping,
-    selectedThemes?: string[],
-    selectedTypes?: string[],
-): Promise<{
-    themeMapping: ThemeMapping;
-    featureTypes: string[];
-}> {
-    // Validate and potentially refresh the theme mapping for the current version
-    const validationSpinner = spinner();
-    validationSpinner.start("Validating theme mapping");
-    const validatedThemeMapping = await getValidThemeMapping(version, themeMapping, validationSpinner);
+async function validateThemeMappingAgainstPrevious(
+  releaseVersion: Version,
+  themeMapping: ThemeMapping,
+  precedingThemeMapping: ThemeMapping,
+  spinner: Spinner,
+): Promise<boolean> {
+  // Compare current mapping with preceding mapping to find differences
+  const differences = compareThemeMappings(themeMapping, precedingThemeMapping)
 
-    // Apply filters if provided
-    let featureTypes = Object.keys(validatedThemeMapping);
-    if (selectedThemes || selectedTypes) {
-        const validationResult = await validateThemesAndTypes(
-            version,
-            selectedThemes,
-            selectedTypes,
-            validatedThemeMapping,
-        );
+  // If there are no differences, cache the current mapping
+  if (!differences.hasDifferences) {
+    await cacheThemeMapping(releaseVersion, themeMapping)
+    spinner.message('Theme mapping validated and cached')
+    return false
+  }
 
-        if (!validationResult.isValid) {
-            // Refresh themes from S3 if validation fails
-            const refreshSpinner = spinner();
-            refreshSpinner.start("Refreshing theme mapping from S3");
-            try {
-                const refreshedThemeMapping = await createThemeMappingFromVersion(version);
-                await cacheThemeMapping(version, refreshedThemeMapping);
-                refreshSpinner.stop("Theme mapping refreshed from S3");
+  // Stop spinner for user interaction
+  spinner.stop('Theme differences detected.')
 
-                // Re-validate after refresh
-                const refreshResult = await validateThemesAndTypes(
-                    version,
-                    selectedThemes,
-                    selectedTypes,
-                    refreshedThemeMapping,
-                );
+  // Prompt user for action using UI
+  const action = await promptUserForThemeAction(differences)
 
-                if (!refreshResult.isValid) {
-                    throw new Error(`Invalid themes or types: ${refreshResult.errors.join(", ")}`);
-                }
-
-                return {
-                    themeMapping: refreshedThemeMapping,
-                    featureTypes: filterFeatureTypes(
-                        Object.keys(refreshedThemeMapping),
-                        refreshedThemeMapping,
-                        selectedThemes,
-                        selectedTypes,
-                    ),
-                };
-            } catch (error) {
-                bailFromSpinner(
-                    refreshSpinner,
-                    "Failed to refresh theme mapping",
-                    `Theme refresh failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-                );
-            }
-        }
-
-        featureTypes = filterFeatureTypes(featureTypes, validatedThemeMapping, selectedThemes, selectedTypes);
-
-        if (featureTypes.length === 0) {
-            throw new Error("No feature types match the specified themes and types filters");
-        }
-    }
-
-    return { themeMapping: validatedThemeMapping, featureTypes };
+  await handleThemeAction(action, releaseVersion, themeMapping)
+  return true
 }
 
 /**
- * Prompts user for theme action when differences are found.
- * This function should be imported from ui.ts when needed.
+ * Handles the user's chosen action for theme differences.
+ * @param action - User's chosen action
+ * @param validationResult - Validation result containing differences and theme mapping
+ * @param version - Release version to cache the theme mapping for
  */
-async function promptUserForThemeAction(differences: any): Promise<any> {
-    // This function should be imported from ui.ts to avoid circular dependencies
-    const { promptUserForThemeAction } = await import("./ui");
-    return promptUserForThemeAction(differences);
+export async function handleThemeAction(
+  action: 'update' | 'cancel',
+  releaseVersion: Version,
+  themeMapping?: ThemeMapping,
+): Promise<ThemeMapping | null> {
+  switch (action) {
+    case 'cancel':
+      failedExit('User said no.')
+      break
+
+    case 'update':
+      // Return the existing theme mapping to be cached
+      if (themeMapping) {
+        // Cache the mapping
+        await cacheThemeMapping(releaseVersion, themeMapping)
+        log.success(
+          `Theme mapping updated and cached with ${kleur.green(Object.keys(themeMapping).length)} feature types`,
+        )
+        return themeMapping
+      } else {
+        // User cancelled
+        log.error('Schema changes detected but mapping not updated')
+      }
+  }
+  return null
+}
+
+/**
+ * UTILS :: FEATURE TYPES
+ */
+
+/**
+ * Gets feature types from CLI args and ENV variables, validates them, and returns either valid types or prompts user.
+ * Priority: CLI args > ENV variables > Interactive > Default (all)
+ */
+async function selectFeatureTypes(
+  themeMapping: ThemeMapping,
+  config: Config,
+  cliArgs: CliArgs,
+  interactiveOpts?: InteractiveOptions | false,
+): Promise<string[]> {
+  const state = {
+    featureTypes: [] as string[],
+    shouldPrompt: false,
+  }
+
+  // Handle CLI args first (highest priority)
+  handleCliArgsForThemeMapping(cliArgs, themeMapping, state)
+
+  // Throw error in non-interactive mode if invalid CLI args
+  if (state.shouldPrompt && interactiveOpts === false) {
+    const { invalid } = validateFeatureTypes(cliArgs.types || [], themeMapping)
+    throw new Error(`Invalid feature types in CLI arguments: ${invalid.join(', ')}`)
+  }
+
+  // Handle environment variables if no valid CLI args
+  if (!state.shouldPrompt && state.featureTypes.length === 0) {
+    handleEnvVarsForThemeMapping(config, themeMapping, state)
+  }
+
+  if (!state.shouldPrompt && state.featureTypes.length > 0) {
+    // If we have valid types and no need to prompt, return them
+    return state.featureTypes
+  } else if (interactiveOpts !== false) {
+    // Interactive mode - Prompt user to select feature types
+    return await selectFeatureTypesInteractively(themeMapping, state.featureTypes)
+  } else {
+    // Non-Interactive Mode - Default to all feature types
+    log.info(`Using all ${Object.keys(themeMapping).length} available feature types`)
+    return Object.keys(themeMapping)
+  }
+}
+
+/**
+ * Handles CLI argument processing for feature types and themes.
+ * @param cliArgs - Command line arguments
+ * @param themeMapping - Current theme mapping
+ * @param allFeatureTypes - All available feature types
+ * @param state - Mutable state object to update with results
+ */
+function handleCliArgsForThemeMapping(
+  cliArgs: CliArgs,
+  themeMapping: ThemeMapping,
+  state: { featureTypes: string[]; shouldPrompt: boolean },
+): void {
+  if (cliArgs.types && cliArgs.types.length > 0) {
+    const { valid, invalid } = validateFeatureTypes(cliArgs.types, themeMapping)
+
+    if (invalid.length > 0) {
+      log.warn(
+        `Invalid feature types in CLI arguments: ${kleur.red(invalid.join(', '))}`,
+      )
+      state.shouldPrompt = true
+    }
+
+    if (valid.length > 0) {
+      state.featureTypes = valid
+      log.message(`Selected: ${kleur.green(valid.length)} types ${kleur.grey('CLI')}`)
+    }
+  }
+
+  // Check if themes are specified in CLI args
+  if (!state.shouldPrompt && cliArgs.themes && cliArgs.themes.length > 0) {
+    const validTypes = Object.keys(themeMapping).filter(type =>
+      cliArgs.themes?.includes(themeMapping[type]),
+    )
+
+    if (validTypes.length > 0) {
+      // Combine with existing types from --types flag, avoiding duplicates
+      const combinedTypes = [...new Set([...state.featureTypes, ...validTypes])]
+      state.featureTypes = combinedTypes
+      log.message(
+        `Selected: ${kleur.green(combinedTypes.length)} types ${kleur.grey('CLI')}`,
+      )
+    }
+  }
+}
+
+/**
+ * Handles environment variable processing for feature types using config.
+ * @param config - Configuration object containing parsed environment variables
+ * @param themeMapping - Current theme mapping
+ * @param state - Mutable state object to update with results
+ */
+function handleEnvVarsForThemeMapping(
+  config: Config,
+  themeMapping: ThemeMapping,
+  state: { featureTypes: string[]; shouldPrompt: boolean },
+): void {
+  if (config.featureTypes && config.featureTypes.length > 0) {
+    const { valid, invalid } = validateFeatureTypes(config.featureTypes, themeMapping)
+
+    if (invalid.length > 0) {
+      log.warn(
+        `Invalid feature types in environment variables: ${kleur.red(invalid.join(', '))}`,
+      )
+      state.shouldPrompt = true
+    }
+
+    if (valid.length > 0) {
+      state.featureTypes = valid
+      state.shouldPrompt = true
+      log.message(
+        `Pre-selected: ${kleur.green(valid.length)} types ${kleur.grey('ENV')}`,
+      )
+    }
+  }
+}
+
+/**
+ * Validates feature types against the current theme mapping.
+ * @param featureTypes - Feature types to validate
+ * @param themeMapping - Current theme mapping
+ * @returns Object with valid and invalid types
+ */
+function validateFeatureTypes(
+  featureTypes: string[],
+  themeMapping: ThemeMapping,
+): {
+  valid: string[]
+  invalid: string[]
+} {
+  const allFeatureTypes = Object.keys(themeMapping)
+  const valid = featureTypes.filter(type => allFeatureTypes.includes(type))
+  const invalid = featureTypes.filter(type => !allFeatureTypes.includes(type))
+  return { valid, invalid }
 }
