@@ -5,12 +5,13 @@ export const OMF_S3_PREFIX = 'release/'
 /**
  * Administrative level mappings by version.
  * Used for filtering division searches by administrative hierarchy level.
- * @note Schema 1.XX reclassified subtypes, so for backward compatibility, we
- *       we support both old and new subtypes.
+ * @note As the schema evolves, we'll have a need to reclassify subtypes. For backward compatibility, we
+ *       keep track of the new mappings introduced at each schema version since v1.0.0.
  * @note Since it's unclear how to handle "borough" subtypes, they are included in both the Local and Community levels.
  */
 export const ADMIN_LEVELS_BY_VERSION = {
-  '2025-09-24.0': {
+  // v1.0.0 - added the dependency and microhood subtypes
+  '2024-07-22.0': {
     1: {
       name: 'National',
       subtypes: ['country', 'dependency'],
@@ -21,14 +22,15 @@ export const ADMIN_LEVELS_BY_VERSION = {
     },
     3: {
       name: 'Local',
-      subtypes: ['macrocounty', 'county', 'localadmin', 'locality'],
+      subtypes: ['macrocounty', 'county', 'localadmin', 'locality', 'borough'],
     },
     4: {
       name: 'Community',
-      subtypes: ['macrohood', 'neighborhood', 'microhood'],
+      subtypes: ['borough', 'macrohood', 'neighborhood', 'microhood'],
     },
   },
-  '2025-12-22.0': {
+  // v1.3.0 - Added macrohoods
+  '2024-11-13.0': {
     1: {
       name: 'National',
       subtypes: ['country', 'dependency'],

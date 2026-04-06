@@ -83,7 +83,8 @@ bun overturist.ts info [OPTIONS]
 | ---------------- | ----- | ------------------------------------------------------------------------------ |
 | `--division`     | `-d`  | Filter results by division's boundaries                                        |
 | `--bbox`         | -     | Filter results by bounding box (e.g., -71.068,42.353,-71.058,42.363)           |
-| `--skip-bf` | - | Skip division boundary filtering and rely on bbox only                     |
+| `--skip-bc`     | -     | Skip division boundary clipping and rely on bbox only                        |
+| `--clip-mode`   | -     | Choose `preserve`, `smart`, or `all` boundary clipping                       |
 
 #### File Handling
 
@@ -140,8 +141,11 @@ bun overturist.ts get --division <id> --replace
 # Download within bounding box
 bun overturist.ts get --division <id> --bbox -71.068,42.353,-71.058,42.363
 
-# Skip the division boundary filter and rely on bbox intersection only
-bun overturist.ts get --division <id> --skip-bf
+# Skip the division boundary pass and rely on bbox intersection only
+bun overturist.ts get --division <id> --skip-bc
+
+# Clip only large-area thematic geometries to the division boundary
+bun overturist.ts get --division <id> --clip-mode smart
 
 # Complex example with multiple options
 bun overturist.ts get \
@@ -163,6 +167,8 @@ bun overturist.ts get --division <id> --theme buildings
 # Priority 2: Environment variables (.env file)
 # DIVISION_ID="b4f09a9f-4cba-4a7c-bf58-2e63bc2e913d"
 # FEATURE_TYPES="building,address"
+# CLIP_MODE="smart"
+# SKIP_BOUNDARY_CLIP=0
 # CONFIRM_FEATURE_SELECTION=true
 # ON_FILE_EXISTS="replace"
 
@@ -243,10 +249,14 @@ The `info` command saves a single division record as `division.json` inside the 
 1. **Command-line options** (highest priority):
    - `--division`: Override division ID for the target region
    - `--bbox`: Override bounding box coordinates (format: xmin,ymin,xmax,ymax)
+   - `--clip-mode`: Choose `preserve`, `smart`, or `all` boundary clipping
+   - `--skip-bc`: Skip the division boundary pass and rely on bbox filtering only
 
 2. **Environment variables** (via `.env` file):
    - `DIVISION_ID`: Overture Maps division ID for the target region
    - `BBOX_XMIN`, `BBOX_XMAX`, `BBOX_YMIN`, `BBOX_YMAX`: Bounding box coordinates (optional - can be set via interactive search)
+   - `CLIP_MODE`: Boundary clipping mode (`preserve`, `smart`, or `all`)
+   - `SKIP_BOUNDARY_CLIP`: Skip the division boundary pass and rely on bbox filtering only
 
 3. **Default settings** in `libs/config.ts`:
    - Output directory: `./data`
