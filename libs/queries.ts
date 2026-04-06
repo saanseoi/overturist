@@ -1,5 +1,6 @@
 import path from 'node:path'
 import type { DuckDBConnection } from '@duckdb/node-api'
+import kleur from 'kleur'
 import { cacheDivisions, getCachedDivision, getTempCachePath } from './cache'
 import { countryCodes } from './constants'
 import { runDuckDBQuery } from './db'
@@ -617,7 +618,7 @@ export async function getFeaturesForBbox(
   try {
     progressCallback?.({
       stage: 'bbox',
-      message: `starting bbox filtering for ${featureType} from ${theme}`,
+      message: `${kleur.white('Filtering')} ${kleur.cyan('bbox')} ${kleur.white('for')} ${kleur.cyan(featureType)} ${kleur.white('from')} ${kleur.magenta(theme)}`,
     })
 
     const result = await runDuckDBQuery(bboxQuery, {
@@ -628,7 +629,6 @@ export async function getFeaturesForBbox(
       const count = JSON.parse(result.stdout)[0].count
       progressCallback?.({
         stage: 'bbox',
-        message: `features found in bbox: ${count}`,
         count,
       })
       return { success: true, count }
@@ -672,7 +672,7 @@ export async function getFeaturesForWorld(
   try {
     progressCallback?.({
       stage: 'bbox',
-      message: `downloading all ${featureType} features from ${theme}`,
+      message: `${kleur.white('Downloading all')} ${kleur.cyan(featureType)} ${kleur.white('from')} ${kleur.magenta(theme)}`,
     })
 
     const result = await runDuckDBQuery(worldQuery, {
@@ -683,7 +683,6 @@ export async function getFeaturesForWorld(
       const count = JSON.parse(result.stdout)[0].count
       progressCallback?.({
         stage: 'bbox',
-        message: `downloaded ${count} ${featureType} features`,
         count,
       })
       return { success: true, count }
@@ -728,7 +727,7 @@ export async function getFeaturesForGeomWithConnection(
     // Step 1: Filter features by bbox only (fast operation on S3)
     progressCallback?.({
       stage: 'bbox',
-      message: `starting bbox filtering for ${featureType} from ${theme}`,
+      message: `${kleur.white('Filtering')} ${kleur.cyan('bbox')} ${kleur.white('for')} ${kleur.cyan(featureType)} ${kleur.white('from')} ${kleur.magenta(theme)}`,
     })
 
     const bboxFilterQuery = `
@@ -749,7 +748,6 @@ export async function getFeaturesForGeomWithConnection(
     const bboxCount = await getCountWithConnection(connection, cacheFile)
     progressCallback?.({
       stage: 'bbox',
-      message: `features found in bbox: ${bboxCount}`,
       count: bboxCount,
     })
 
@@ -757,7 +755,7 @@ export async function getFeaturesForGeomWithConnection(
     if (bboxCount > 0) {
       progressCallback?.({
         stage: 'geometry',
-        message: `starting geometry intersection filtering on ${bboxCount} features`,
+        message: `${kleur.white('Filtering')} ${kleur.cyan('geometry')} ${kleur.white('for')} ${kleur.cyan(featureType)} ${kleur.white('from')} ${kleur.magenta(theme)}`,
         count: bboxCount,
       })
 
@@ -775,7 +773,6 @@ export async function getFeaturesForGeomWithConnection(
       const finalCount = await getCountWithConnection(connection, outputFile)
       progressCallback?.({
         stage: 'geometry',
-        message: `features after geometry filtering: ${finalCount}`,
         count: finalCount,
       })
       return { success: true, bboxCount, finalCount }
@@ -786,7 +783,6 @@ export async function getFeaturesForGeomWithConnection(
       )
       progressCallback?.({
         stage: 'bbox',
-        message: `no ${featureType} features found in bbox`,
         count: 0,
       })
       return { success: true, bboxCount: 0, finalCount: 0 }

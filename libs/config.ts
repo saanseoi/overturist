@@ -152,9 +152,7 @@ export function validateBooleanConfig(value: string, envVarName: string): boolea
     return false
   }
 
-  bail(
-    `Invalid ${envVarName}: ${value} ${kleur.grey('- use true, false, 1, or 0')}`,
-  )
+  bail(`Invalid ${envVarName}: ${value} ${kleur.grey('- use true, false, 1, or 0')}`)
 }
 
 /**

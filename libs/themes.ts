@@ -258,7 +258,11 @@ async function selectFeatureTypes(
   interactiveOpts?: InteractiveOptions | false,
 ): Promise<string[]> {
   const selectionRequest =
-    resolveFeatureSelectionRequest(cliArgs, themeMapping, config.confirmFeatureSelection) ||
+    resolveFeatureSelectionRequest(
+      cliArgs,
+      themeMapping,
+      config.confirmFeatureSelection,
+    ) ||
     resolveFeatureSelectionRequest(config, themeMapping, config.confirmFeatureSelection)
 
   if (selectionRequest) {
@@ -300,7 +304,8 @@ function resolveFeatureSelectionRequest(
 ): FeatureSelectionRequest | null {
   const requestedTypes = 'types' in sourceConfig ? sourceConfig.types || [] : []
   const requestedThemes = 'themes' in sourceConfig ? sourceConfig.themes || [] : []
-  const envFeatureTypes = 'featureTypes' in sourceConfig ? sourceConfig.featureTypes || [] : []
+  const envFeatureTypes =
+    'featureTypes' in sourceConfig ? sourceConfig.featureTypes || [] : []
   const source = getFeatureSelectionSource(sourceConfig)
   const explicitFeatureTypes = source === 'env' ? envFeatureTypes : requestedTypes
 
@@ -309,7 +314,10 @@ function resolveFeatureSelectionRequest(
   }
 
   const validFeatureTypes = validateFeatureTypes(explicitFeatureTypes, themeMapping)
-  const resolvedThemeFeatureTypes = resolveThemeFeatureTypes(requestedThemes, themeMapping)
+  const resolvedThemeFeatureTypes = resolveThemeFeatureTypes(
+    requestedThemes,
+    themeMapping,
+  )
   const combinedFeatureTypes = dedupeFeatureTypes([
     ...validFeatureTypes,
     ...resolvedThemeFeatureTypes,

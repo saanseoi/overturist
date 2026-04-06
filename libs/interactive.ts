@@ -33,6 +33,11 @@ export async function handleMainMenu(CONFIG: Config, cliArgs: CliArgs) {
   while (true) {
     const action = await promptForMainAction()
 
+    if (action === null) {
+      outro(kleur.blue('Goodbye!'))
+      return
+    }
+
     switch (action) {
       case 'download_data': {
         await handleDownloadMenu(CONFIG, cliArgs)

@@ -117,7 +117,7 @@ async function initProgressTracker(
     activeStage: 'bbox',
     featureCount: 0,
     diffCount: null,
-    currentMessage: `preparing ${featureType}`,
+    currentMessage: `${kleur.white('Preparing')} ${kleur.cyan(featureType)}`,
   }
 
   updateProgressDisplay(
@@ -162,7 +162,7 @@ function updateProgressForCompletedFeature(
 
     progressState.featureCount = count
     progressState.diffCount = getDiffCount(count, lastReleaseCount)
-    progressState.currentMessage = `completed ${featureType} (${count} features)`
+    progressState.currentMessage = `${kleur.white('Completed')} ${kleur.cyan(featureType)} ${kleur.white(`(${count} features)`)}`
   } else {
     throw new Error(`Failed to process dataset for ${featureType}`)
   }
@@ -255,7 +255,7 @@ async function runFeatureExtraction(
         bboxProgressCallback(
           update ?? {
             stage: 'bbox',
-            message: `downloading ${featureType}`,
+            message: `${kleur.white('Downloading')} ${kleur.cyan(featureType)}`,
           },
         ),
     )
@@ -280,7 +280,7 @@ async function runFeatureExtraction(
         bboxProgressCallback(
           update ?? {
             stage: 'bbox',
-            message: `filtering ${featureType} within bbox`,
+            message: `${kleur.white('Filtering')} ${kleur.cyan('bbox')} ${kleur.white('for')} ${kleur.cyan(featureType)}`,
           },
         ),
     )
@@ -384,7 +384,7 @@ async function processFeatureType(
   } catch (error) {
     progressState.isProcessing = false
     progressState.activeStage = null
-    progressState.currentMessage = `failed ${featureType}: ${error instanceof Error ? error.message : 'Unknown error'}`
+    progressState.currentMessage = `${kleur.red('Failed')} ${kleur.cyan(featureType)}${error instanceof Error ? `: ${kleur.white(error.message)}` : ''}`
     updateProgressDisplay(
       featureType,
       index,

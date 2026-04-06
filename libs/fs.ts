@@ -212,7 +212,7 @@ export async function initializeFileHandling(
     interactiveOpts,
   )
   // Check for abort early
-  if (onFileExists === 'abort' || typeof onFileExists === 'symbol') {
+  if (onFileExists === 'abort') {
     failedExit('Aborting file handling')
   }
   return {
