@@ -5,6 +5,7 @@ import { extractBoundsFromDivisionGeometry } from '../workflows/processing'
 import type {
   BBox,
   CliArgs,
+  ClipMode,
   Config,
   Division,
   Geometry,
@@ -24,7 +25,8 @@ const CONFIG: Config = {
   confirmFeatureSelection: true,
   bbox: undefined,
   divisionId: undefined,
-  noClip: undefined,
+  skipBoundaryClip: undefined,
+  clipMode: 'preserve',
   onFileExists: undefined,
 }
 /**
@@ -66,10 +68,15 @@ function applyEnvVars(config: Config): Config {
   }
 
   // Apply boundary-filter environment variable.
-  if (process.env.SKIP_BOUNDARY_FILTER === '1') {
-    updatedConfig.noClip = true
-  } else if (process.env.SKIP_BOUNDARY_FILTER === '0') {
-    updatedConfig.noClip = false
+  if (process.env.SKIP_BOUNDARY_CLIP === '1') {
+    updatedConfig.skipBoundaryClip = true
+  } else if (process.env.SKIP_BOUNDARY_CLIP === '0') {
+    updatedConfig.skipBoundaryClip = false
+  }
+
+  // Apply boundary clipping mode when defined.
+  if (process.env.CLIP_MODE) {
+    updatedConfig.clipMode = validateClipMode(process.env.CLIP_MODE)
   }
 
   // Apply featureTypes
@@ -132,6 +139,25 @@ export function validateOnFileExists(
     return action as OnExistingFilesAction
   }
   return DEFAULT_ON_FILE_EXISTS
+}
+
+/**
+ * Validates the configured boundary clip mode.
+ * @param clipMode - Raw clip mode from environment variables or CLI input
+ * @returns Normalized clip mode
+ */
+export function validateClipMode(clipMode: string | undefined): ClipMode {
+  const validClipModes: ClipMode[] = ['preserve', 'smart', 'all']
+
+  if (clipMode && !validClipModes.includes(clipMode as ClipMode)) {
+    bail(
+      `Invalid CLIP_MODE: ${clipMode} ${kleur.grey(`- use ${validClipModes.join(', ')}`)}`,
+    )
+  } else if (clipMode && validClipModes.includes(clipMode as ClipMode)) {
+    return clipMode as ClipMode
+  }
+
+  return 'preserve'
 }
 
 /**
@@ -211,7 +237,7 @@ export function validateTargetConfig(
   target: Target,
 ): Target {
   // CASE 1 : target=world AND dividionId - dividionId takes precedence over target=world
-  const hasDivisionId = cliArgs.divisionId || config.divisionId || false
+  const hasDivisionId = cliArgs.divisionId || cliArgs.osmId || config.divisionId || false
   const isTargetWorld = target === 'world'
   if (isTargetWorld && hasDivisionId) {
     log.warn(kleur.yellow('⚠️  Target=world is ignored when DivisionId is set'))
@@ -243,21 +269,37 @@ export async function initializeBounds(
   division: Division | null,
   divisionId: string | null,
   releaseVersion: Version,
-): Promise<{ bbox: BBox | null; noClip: boolean; geometry: Geometry | null }> {
+): Promise<{
+  bbox: BBox | null
+  skipBoundaryClip: boolean
+  clipMode: ClipMode
+  geometry: Geometry | null
+}> {
   // WORLD TARGET
   if (target === 'world') {
     // Download world geometry
-    return { bbox: null, noClip: true, geometry: null }
+    return {
+      bbox: null,
+      skipBoundaryClip: true,
+      clipMode: validateClipMode(cliArgs.clipMode || config.clipMode),
+      geometry: null,
+    }
   }
   // Determine clipping behavior based on config
-  const noClip = cliArgs.noClip || config.noClip || false
+  const skipBoundaryClip = cliArgs.skipBoundaryClip || config.skipBoundaryClip || false
+  const clipMode = validateClipMode(cliArgs.clipMode || config.clipMode)
   const bbox = cliArgs.bbox || config.bbox
   // BBOX MODE
   if (target === 'bbox' && !bbox) {
     bail('You must provide a bounding box if you are using the bbox target')
   } else if (target === 'bbox' && bbox) {
     // Download bbox geometry
-    return { bbox: bbox, noClip: true, geometry: null }
+    return {
+      bbox,
+      skipBoundaryClip: true,
+      clipMode,
+      geometry: null,
+    }
     // DIVISION TARGET
   } else if (target === 'division' && !division) {
     // This should never run
@@ -271,13 +313,14 @@ export async function initializeBounds(
     )
     return {
       bbox: bbox || bounds?.bbox || null,
-      geometry: noClip ? null : bounds?.geometry || null,
-      noClip: validateNoClip(noClip),
+      geometry: skipBoundaryClip ? null : bounds?.geometry || null,
+      skipBoundaryClip: validateSkipBoundaryClip(skipBoundaryClip),
+      clipMode,
     }
   }
 }
 
-function validateNoClip(noClip: boolean): boolean {
+function validateSkipBoundaryClip(skipBoundaryClip: boolean): boolean {
   // DEFAULT CASE
-  return noClip
+  return skipBoundaryClip
 }

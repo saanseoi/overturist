@@ -53,7 +53,7 @@ export async function resolveOptions(
   )
 
   // Resolve clipping once target and division context are known.
-  const { bbox, noClip, geometry } = await initializeBounds(
+  const { bbox, skipBoundaryClip, clipMode, geometry } = await initializeBounds(
     config,
     cliArgs,
     target,
@@ -92,7 +92,8 @@ export async function resolveOptions(
     division,
     bbox,
     geometry,
-    noClip,
+    skipBoundaryClip,
+    clipMode,
     featureTypes,
     featureNameWidth,
     indexWidth,

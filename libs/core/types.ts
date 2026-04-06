@@ -59,6 +59,7 @@ export type DivisionBoundary = {
  */
 
 export type Target = 'division' | 'bbox' | 'world'
+export type ClipMode = 'preserve' | 'smart' | 'all'
 
 export type Config = {
   locale: string
@@ -70,7 +71,8 @@ export type Config = {
   divisionId?: GERS
   releaseVersion?: Version
   selectedDivision?: Division
-  noClip?: boolean
+  skipBoundaryClip?: boolean
+  clipMode?: ClipMode
   featureTypes?: string[]
   confirmFeatureSelection: boolean
   onFileExists?: OnExistingFilesAction
@@ -212,10 +214,12 @@ export interface CliArgs {
   themes?: string[]
   types?: string[]
   divisionId?: GERS
+  osmId?: string
   releaseVersion?: Version
   examples?: boolean
   bbox?: BBox
-  noClip?: boolean
+  skipBoundaryClip?: boolean
+  clipMode?: ClipMode
   target?: Target
   locale?: string
   get?: boolean
@@ -228,7 +232,7 @@ export type ParsedArgs = {
   info?: boolean
   help?: boolean
   examples?: boolean
-  'skip-bf'?: boolean
+  'skip-bc'?: boolean
   skip?: boolean
   replace?: boolean
   abort?: boolean
@@ -240,9 +244,11 @@ export type ParsedArgs = {
   // String arguments
   target?: Target
   division?: string
+  osmId?: string
   release?: string
   bbox?: string
   locale?: string
+  'clip-mode'?: ClipMode
 }
 
 /**
@@ -257,7 +263,8 @@ export interface OptionConfig {
 
 export interface InteractiveOptions {
   releaseVersion?: string | null
-  noClip?: boolean
+  skipBoundaryClip?: boolean
+  clipMode?: ClipMode
   target?: Target
   divisionLookupMode?: 'name' | 'osm'
   selectedDivision?: Division
@@ -275,7 +282,8 @@ export interface ControlContext {
   division: Division | null
   bbox: BBox | null
   geometry: Geometry | null // Hex-encoded WKB binary
-  noClip: boolean
+  skipBoundaryClip: boolean
+  clipMode: ClipMode
   featureTypes: string[]
   featureNameWidth: number
   indexWidth: number

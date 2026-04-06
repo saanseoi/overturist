@@ -64,7 +64,7 @@ export async function processFeatureTypes(ctx: ControlContext) {
             SET enable_object_cache=true;
         `
     await connection.run(extensionQuery)
-    if (ctx.divisionId && ctx.bbox && ctx.geometry) {
+    if (ctx.divisionId && ctx.bbox && ctx.geometry && !ctx.skipBoundaryClip) {
       const boundsQuery = `
                 -- Set the boundary variables directly from pre-computed values
                 SET variable xmin = ${ctx.bbox.xmin};
@@ -82,10 +82,22 @@ export async function processFeatureTypes(ctx: ControlContext) {
     for (const [index, featureType] of ctx.featureTypes.entries()) {
       await processFeatureType(ctx, featureType, index, connection)
     }
+
+    updateProgressStatus(kleur.green('All done'))
   } finally {
     finalizeProgressDisplay()
     await dbManager.close()
   }
+}
+
+/**
+ * Formats the theme/feature subject used in progress status updates.
+ * @param theme - Theme bucket associated with the feature type
+ * @param featureType - Concrete feature type being processed
+ * @returns Styled subject string for progress messages
+ */
+function formatProgressSubject(theme: string | undefined, featureType: string): string {
+  return kleur.cyan(theme ? `${theme}/${featureType}` : featureType)
 }
 
 /**
@@ -107,7 +119,11 @@ async function initProgressTracker(
   indexWidth: number,
 ) {
   const lastReleaseCount = await getLastReleaseCount(ctx, featureType)
-  const hasGeometryPass = ctx.target === 'division' && !ctx.noClip
+  const hasGeometryPass = ctx.target === 'division' && !ctx.skipBoundaryClip
+  const progressSubject = formatProgressSubject(
+    ctx.themeMapping[featureType],
+    featureType,
+  )
 
   const progressState: ProgressState = {
     bboxComplete: false,
@@ -117,7 +133,7 @@ async function initProgressTracker(
     activeStage: 'bbox',
     featureCount: 0,
     diffCount: null,
-    currentMessage: `${kleur.white('Preparing')} ${kleur.cyan(featureType)}`,
+    currentMessage: `${kleur.white('Preparing')} ${progressSubject}`,
   }
 
   updateProgressDisplay(
@@ -127,6 +143,7 @@ async function initProgressTracker(
     progressState,
     featureNameWidth,
     indexWidth,
+    ctx.target === 'division' ? 7 : 9,
   )
 
   return { lastReleaseCount, progressState }
@@ -145,6 +162,7 @@ function updateProgressForCompletedFeature(
   result: { success: boolean; count?: number; finalCount?: number; bboxCount?: number },
   progressState: ProgressState,
   lastReleaseCount: number | null,
+  theme: string | undefined,
   featureType: string,
   featureCountKey: keyof Pick<
     typeof result,
@@ -162,7 +180,7 @@ function updateProgressForCompletedFeature(
 
     progressState.featureCount = count
     progressState.diffCount = getDiffCount(count, lastReleaseCount)
-    progressState.currentMessage = `${kleur.white('Completed')} ${kleur.cyan(featureType)} ${kleur.white(`(${count} features)`)}`
+    progressState.currentMessage = `${kleur.white('Completed')} ${formatProgressSubject(theme, featureType)} ${kleur.white(`(${count} features)`)}`
   } else {
     throw new Error(`Failed to process dataset for ${featureType}`)
   }
@@ -176,7 +194,8 @@ function updateProgressForCompletedFeature(
  * @param progressState - Progress state object to update
  * @param featureNameWidth - Width for feature name display
  * @param indexWidth - Width for index display
- * @param stage - Stage represented by the callback
+ * @param countWidth - Width for the progress count column
+ * @param fallbackStage - Stage represented by the callback
  * @returns Progress callback function
  */
 function createProgressCallback(
@@ -186,6 +205,7 @@ function createProgressCallback(
   progressState: ProgressState,
   featureNameWidth: number,
   indexWidth: number,
+  countWidth: number,
   fallbackStage: 'bbox' | 'geometry',
 ) {
   return (update?: ProgressUpdate) => {
@@ -201,6 +221,7 @@ function createProgressCallback(
       progressState,
       featureNameWidth,
       indexWidth,
+      countWidth,
     )
   }
 }
@@ -226,6 +247,9 @@ async function runFeatureExtraction(
   connection?: DuckDBConnection,
 ): Promise<void> {
   const { featureTypes, featureNameWidth, indexWidth, target } = ctx
+  const theme = ctx.themeMapping[featureType]
+  const progressSubject = formatProgressSubject(theme, featureType)
+  const countWidth = ctx.target === 'division' ? 7 : 9
   const bboxProgressCallback = createProgressCallback(
     featureType,
     index,
@@ -233,6 +257,7 @@ async function runFeatureExtraction(
     progressState,
     featureNameWidth,
     indexWidth,
+    countWidth,
     'bbox',
   )
   const geometryProgressCallback = createProgressCallback(
@@ -242,6 +267,7 @@ async function runFeatureExtraction(
     progressState,
     featureNameWidth,
     indexWidth,
+    countWidth,
     'geometry',
   )
 
@@ -255,7 +281,7 @@ async function runFeatureExtraction(
         bboxProgressCallback(
           update ?? {
             stage: 'bbox',
-            message: `${kleur.white('Downloading')} ${kleur.cyan(featureType)}`,
+            message: `${kleur.white('Downloading')} ${progressSubject}`,
           },
         ),
     )
@@ -263,6 +289,7 @@ async function runFeatureExtraction(
       result,
       progressState,
       lastReleaseCount,
+      theme,
       featureType,
       'count',
       'bbox',
@@ -270,7 +297,7 @@ async function runFeatureExtraction(
     return
   }
 
-  if (ctx.bbox && (target === 'bbox' || ctx.noClip)) {
+  if (ctx.bbox && (target === 'bbox' || ctx.skipBoundaryClip)) {
     const result = await getFeaturesForBbox(
       ctx,
       featureType,
@@ -280,7 +307,7 @@ async function runFeatureExtraction(
         bboxProgressCallback(
           update ?? {
             stage: 'bbox',
-            message: `${kleur.white('Filtering')} ${kleur.cyan('bbox')} ${kleur.white('for')} ${kleur.cyan(featureType)}`,
+            message: `${kleur.white('Filtering')} ${kleur.cyan('bbox')} ${kleur.white('for')} ${progressSubject}`,
           },
         ),
     )
@@ -288,6 +315,7 @@ async function runFeatureExtraction(
       result,
       progressState,
       lastReleaseCount,
+      theme,
       featureType,
       'count',
       'bbox',
@@ -327,6 +355,7 @@ async function runFeatureExtraction(
       result,
       progressState,
       lastReleaseCount,
+      theme,
       featureType,
       'finalCount',
       'geometry',
@@ -352,6 +381,7 @@ async function processFeatureType(
   connection?: DuckDBConnection,
 ) {
   const { featureTypes, featureNameWidth, indexWidth } = ctx
+  const countWidth = ctx.target === 'division' ? 7 : 9
 
   const outputPath = path.join(ctx.outputDir, `${featureType}.parquet`)
 
@@ -381,10 +411,6 @@ async function processFeatureType(
       lastReleaseCount,
       connection,
     )
-  } catch (error) {
-    progressState.isProcessing = false
-    progressState.activeStage = null
-    progressState.currentMessage = `${kleur.red('Failed')} ${kleur.cyan(featureType)}${error instanceof Error ? `: ${kleur.white(error.message)}` : ''}`
     updateProgressDisplay(
       featureType,
       index,
@@ -392,6 +418,20 @@ async function processFeatureType(
       progressState,
       featureNameWidth,
       indexWidth,
+      countWidth,
+    )
+  } catch (error) {
+    progressState.isProcessing = false
+    progressState.activeStage = null
+    progressState.currentMessage = `${kleur.red('Failed')} ${formatProgressSubject(ctx.themeMapping[featureType], featureType)}${error instanceof Error ? `: ${kleur.white(error.message)}` : ''}`
+    updateProgressDisplay(
+      featureType,
+      index,
+      featureTypes.length,
+      progressState,
+      featureNameWidth,
+      indexWidth,
+      countWidth,
     )
     updateProgressStatus(progressState.currentMessage)
     return

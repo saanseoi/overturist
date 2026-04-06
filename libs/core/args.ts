@@ -1,6 +1,6 @@
 import { parse } from '@bomb.sh/args'
 import kleur from 'kleur'
-import { validateTarget } from './config'
+import { validateClipMode, validateTarget } from './config'
 import type {
   BBox,
   CliArgs,
@@ -36,9 +36,14 @@ const options: Record<string, OptionConfig> = {
     group: 'Geospatial',
   },
   division: {
-    description: "Filter results by this division's boundaries or OSM relation id",
+    description: "Filter results by this division's boundaries using its stable Overture id",
     boolean: false,
     alias: 'd',
+    group: 'Geospatial',
+  },
+  osmId: {
+    description: 'Resolve a division from an OSM relation id',
+    boolean: false,
     group: 'Geospatial',
   },
   bbox: {
@@ -46,9 +51,14 @@ const options: Record<string, OptionConfig> = {
     boolean: false,
     group: 'Geospatial',
   },
-  'skip-bf': {
-    description: 'Skip division boundary filtering and rely on bbox only',
+  'skip-bc': {
+    description: 'Skip division boundary clipping and rely on bbox only',
     boolean: true,
+    group: 'Geospatial',
+  },
+  'clip-mode': {
+    description: `Boundary clipping mode ${kleur.grey('preserve, smart, or all')}`,
+    boolean: false,
     group: 'Geospatial',
   },
   skip: {
@@ -87,7 +97,16 @@ const options: Record<string, OptionConfig> = {
 
 const argConfig = {
   boolean: Object.keys(options).filter(key => options[key]?.boolean),
-  string: ['theme', 'type', 'division', 'release', 'bbox', 'target'], // Add support for multiple values
+  string: [
+    'theme',
+    'type',
+    'division',
+    'osmId',
+    'release',
+    'bbox',
+    'target',
+    'clip-mode',
+  ], // Add support for multiple values
   alias: Object.fromEntries(
     Object.entries(options)
       .filter(([, value]) => value.alias)
@@ -120,8 +139,10 @@ export function handleArguments(argv: string[] = process.argv): CliArgs {
 
   // Parse simple string options
   const divisionId = parseStringArgument(parsedArgs.division)
+  const osmId = parseStringArgument(parsedArgs.osmId)
   const releaseVersion = parseStringArgument(parsedArgs.release)
   const locale = parseStringArgument(parsedArgs.locale)
+  const clipMode = validateClipMode(parseStringArgument(parsedArgs['clip-mode']))
 
   // Parse Limited Sets
   const target = validateTarget(parsedArgs.target)
@@ -131,9 +152,11 @@ export function handleArguments(argv: string[] = process.argv): CliArgs {
     themes,
     types,
     divisionId,
+    osmId,
     releaseVersion,
     bbox,
-    noClip: parsedArgs['skip-bf'],
+    skipBoundaryClip: parsedArgs['skip-bc'],
+    clipMode,
     target,
     locale,
     get: isGetCommand(argv),
@@ -257,7 +280,7 @@ export function displayExamples() {
         },
         {
           command: 'bun overturist.ts info',
-          description: `Inspect one division from ${kleur.gray('DIVISION_ID')} or ${kleur.gray('--division')}`,
+          description: `Inspect one division from ${kleur.gray('DIVISION_ID')}, ${kleur.gray('--division')}, or ${kleur.gray('--osmId')}`,
         },
       ],
     },
@@ -291,14 +314,23 @@ export function displayExamples() {
           description: "All features will fall within this division's boundaries",
         },
         {
+          command: '--osmId 12345',
+          description: 'Resolve the target division from an OSM relation id',
+        },
+        {
           command: '--bbox -71.0,42.3,-71.1,42.4',
           description:
             'All features will fall within this bounding box (west, south, east, north)',
         },
         {
-          command: '--skip-bf',
+          command: '--skip-bc',
           description:
-            'Skip boundary geometry, rely solely on bbox for results filtering',
+            'Skip boundary geometry and rely solely on bbox for results filtering',
+        },
+        {
+          command: '--clip-mode smart',
+          description:
+            'Clip only large-area feature geometries while preserving everything else intact',
         },
       ],
     },
@@ -349,6 +381,10 @@ export function displayExamples() {
     {
       command: 'bun overturist.ts info --division b4f09a9f-4cba-4a7c-bf58-2e63bc2e913d',
       description: 'Show division metadata and save it into the release hierarchy.',
+    },
+    {
+      command: 'bun overturist.ts info --osmId 12345',
+      description: 'Resolve one division by OSM relation id and save its metadata.',
     },
     {
       command: 'bun overturist.ts get --division b4f09a9f-4cba-4a7c-bf58-2e63bc2e913d',
