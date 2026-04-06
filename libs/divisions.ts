@@ -117,13 +117,18 @@ export async function initializeDivision(
  * @param cliArgs - Command line arguments for the current invocation
  * @returns Preselected division when it remains compatible with the active ids
  */
-function getPreselectedDivision(
+export function getPreselectedDivision(
   interactiveOpts: InteractiveOptions | false | undefined,
   config: Config,
   cliArgs: CliArgs,
 ): Division | undefined {
   if (interactiveOpts && 'selectedDivision' in interactiveOpts) {
     return interactiveOpts.selectedDivision
+  }
+
+  // Interactive prompt flows should only reuse an explicitly injected division.
+  if (interactiveOpts) {
+    return undefined
   }
 
   // Reuse the persisted selection only when it still matches any explicit ids.

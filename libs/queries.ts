@@ -1,11 +1,17 @@
 import path from 'node:path'
-import { log } from '@clack/prompts'
 import type { DuckDBConnection } from '@duckdb/node-api'
 import { cacheDivisions, getCachedDivision, getTempCachePath } from './cache'
 import { countryCodes } from './constants'
 import { runDuckDBQuery } from './db'
 import { getOutputDir, isParquetExists } from './fs'
-import type { BBox, ControlContext, Division, GERS, Version } from './types'
+import type {
+  BBox,
+  ControlContext,
+  Division,
+  GERS,
+  ProgressUpdate,
+  Version,
+} from './types'
 import { bail } from './utils'
 import { normalizeDivisionBBox } from './validation'
 
@@ -586,7 +592,7 @@ export async function getFeaturesForBbox(
   featureType: string,
   theme: string,
   outputFile: string,
-  progressCallback?: () => void,
+  progressCallback?: (update: ProgressUpdate) => void,
 ): Promise<{ success: boolean; count: number }> {
   const s3Path = `'s3://overturemaps-us-west-2/release/${ctx.releaseVersion}/theme=${theme}/type=${featureType}/*.parquet'`
 
@@ -606,15 +612,25 @@ export async function getFeaturesForBbox(
        COPY bbox_features TO '${outputFile}' (FORMAT PARQUET, COMPRESSION 'ZSTD');
 
        SELECT COUNT(*) as count FROM bbox_features;
-   `
+  `
 
   try {
+    progressCallback?.({
+      stage: 'bbox',
+      message: `starting bbox filtering for ${featureType} from ${theme}`,
+    })
+
     const result = await runDuckDBQuery(bboxQuery, {
-      progressCallback,
+      progressCallback: () => progressCallback?.({ stage: 'bbox' }),
     })
 
     if (result.exitCode === 0 && result.stdout) {
       const count = JSON.parse(result.stdout)[0].count
+      progressCallback?.({
+        stage: 'bbox',
+        message: `features found in bbox: ${count}`,
+        count,
+      })
       return { success: true, count }
     } else {
       return { success: false, count: 0 }
@@ -639,7 +655,7 @@ export async function getFeaturesForWorld(
   theme: string,
   version: string,
   outputFile: string,
-  progressCallback?: () => void,
+  progressCallback?: (update: ProgressUpdate) => void,
 ): Promise<{ success: boolean; count: number }> {
   const s3Path = `s3://overturemaps-us-west-2/release/${version}/theme=${theme}/type=${featureType}/`
 
@@ -651,15 +667,25 @@ export async function getFeaturesForWorld(
         ) TO '${outputFile}' (FORMAT PARQUET, COMPRESSION 'ZSTD');
 
         SELECT COUNT(*) as count FROM read_parquet('${outputFile}');
-    `
+  `
 
   try {
+    progressCallback?.({
+      stage: 'bbox',
+      message: `downloading all ${featureType} features from ${theme}`,
+    })
+
     const result = await runDuckDBQuery(worldQuery, {
-      progressCallback,
+      progressCallback: () => progressCallback?.({ stage: 'bbox' }),
     })
 
     if (result.exitCode === 0 && result.stdout) {
       const count = JSON.parse(result.stdout)[0].count
+      progressCallback?.({
+        stage: 'bbox',
+        message: `downloaded ${count} ${featureType} features`,
+        count,
+      })
       return { success: true, count }
     } else {
       return { success: false, count: 0 }
@@ -686,7 +712,7 @@ export async function getFeaturesForGeomWithConnection(
   featureType: string,
   theme: string,
   outputFile: string,
-  progressCallback?: (stage: string, progress?: number) => void,
+  progressCallback?: (update: ProgressUpdate) => void,
 ): Promise<{ success: boolean; bboxCount: number; finalCount: number }> {
   const s3Path = `'s3://overturemaps-us-west-2/release/${ctx.releaseVersion}/theme=${theme}/type=${featureType}/*.parquet'`
   const cacheFile = await getTempCachePath(outputFile)
@@ -697,11 +723,13 @@ export async function getFeaturesForGeomWithConnection(
 
   try {
     // Skip setup progress - connection is already set up with extensions and variables
-    progressCallback?.('setup', 100)
+    progressCallback?.({ stage: 'setup' })
 
     // Step 1: Filter features by bbox only (fast operation on S3)
-    progressCallback?.('bbox-filtering', 0)
-    log.info(`Starting bbox filtering for ${featureType} features from ${theme} theme`)
+    progressCallback?.({
+      stage: 'bbox',
+      message: `starting bbox filtering for ${featureType} from ${theme}`,
+    })
 
     const bboxFilterQuery = `
             COPY (
@@ -716,17 +744,22 @@ export async function getFeaturesForGeomWithConnection(
         `
 
     await connection.run(bboxFilterQuery)
-    progressCallback?.('bbox-filtering', 90)
 
     // Count bbox-filtered features on the shared connection to avoid extra DuckDB startup work.
     const bboxCount = await getCountWithConnection(connection, cacheFile)
-    progressCallback?.('bbox-filtering', 100)
-    log.info(`Features found in bbox: ${bboxCount}`)
+    progressCallback?.({
+      stage: 'bbox',
+      message: `features found in bbox: ${bboxCount}`,
+      count: bboxCount,
+    })
 
     // Step 2: Apply geometry intersection filter on local cache file (fast operation)
     if (bboxCount > 0) {
-      progressCallback?.('geom-filtering', 0)
-      log.info(`Starting geometry intersection filtering on ${bboxCount} features`)
+      progressCallback?.({
+        stage: 'geometry',
+        message: `starting geometry intersection filtering on ${bboxCount} features`,
+        count: bboxCount,
+      })
 
       const geomFilterQuery = `
                 COPY (
@@ -737,23 +770,28 @@ export async function getFeaturesForGeomWithConnection(
             `
 
       await connection.run(geomFilterQuery)
-      progressCallback?.('geom-filtering', 90)
 
       // Count the final output on the shared connection to avoid extra DuckDB startup work.
       const finalCount = await getCountWithConnection(connection, outputFile)
-      progressCallback?.('geom-filtering', 100)
-
-      log.info(`Features after geometry filtering: ${finalCount}`)
+      progressCallback?.({
+        stage: 'geometry',
+        message: `features after geometry filtering: ${finalCount}`,
+        count: finalCount,
+      })
       return { success: true, bboxCount, finalCount }
     } else {
       // No features in bbox, create empty output file
       await connection.run(
         `COPY (SELECT * FROM read_parquet('${cacheFile}') LIMIT 0) TO '${outputFile}' (FORMAT PARQUET, COMPRESSION 'ZSTD');`,
       )
+      progressCallback?.({
+        stage: 'bbox',
+        message: `no ${featureType} features found in bbox`,
+        count: 0,
+      })
       return { success: true, bboxCount: 0, finalCount: 0 }
     }
-  } catch (error) {
-    log.error(`Error in getFeaturesForGeomWithConnection: ${error}`)
+  } catch (_error) {
     return { success: false, bboxCount: 0, finalCount: 0 }
   }
 }

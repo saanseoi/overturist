@@ -174,6 +174,16 @@ export interface ProgressState {
   activeStage: 'bbox' | 'geometry' | null
   featureCount: number
   diffCount: number | null // Difference from previous version
+  currentMessage: string | null
+}
+
+/**
+ * Incremental progress update emitted by extraction queries.
+ */
+export interface ProgressUpdate {
+  stage: 'setup' | 'bbox' | 'geometry'
+  message?: string
+  count?: number
 }
 
 /**

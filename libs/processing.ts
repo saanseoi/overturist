@@ -31,9 +31,16 @@ import type {
   GERS,
   Geometry,
   ProgressState,
+  ProgressUpdate,
   Version,
 } from './types'
-import { handleSkippedFeature, updateProgressDisplay } from './ui'
+import {
+  applyProgressUpdate,
+  finalizeProgressDisplay,
+  handleSkippedFeature,
+  updateProgressDisplay,
+  updateProgressStatus,
+} from './ui'
 import { bail, bailFromSpinner, getDiffCount } from './utils'
 
 /**
@@ -76,6 +83,7 @@ export async function processFeatureTypes(ctx: ControlContext) {
       await processFeatureType(ctx, featureType, index, connection)
     }
   } finally {
+    finalizeProgressDisplay()
     await dbManager.close()
   }
 }
@@ -109,6 +117,7 @@ async function initProgressTracker(
     activeStage: 'bbox',
     featureCount: 0,
     diffCount: null,
+    currentMessage: `preparing ${featureType}`,
   }
 
   updateProgressDisplay(
@@ -153,6 +162,7 @@ function updateProgressForCompletedFeature(
 
     progressState.featureCount = count
     progressState.diffCount = getDiffCount(count, lastReleaseCount)
+    progressState.currentMessage = `completed ${featureType} (${count} features)`
   } else {
     throw new Error(`Failed to process dataset for ${featureType}`)
   }
@@ -176,11 +186,14 @@ function createProgressCallback(
   progressState: ProgressState,
   featureNameWidth: number,
   indexWidth: number,
-  stage: 'bbox' | 'geometry',
+  fallbackStage: 'bbox' | 'geometry',
 ) {
-  return () => {
-    progressState.isProcessing = true
-    progressState.activeStage = stage
+  return (update?: ProgressUpdate) => {
+    applyProgressUpdate(progressState, {
+      stage: update?.stage === 'geometry' ? 'geometry' : fallbackStage,
+      message: update?.message,
+      count: update?.count,
+    })
     updateProgressDisplay(
       featureType,
       index,
@@ -238,7 +251,13 @@ async function runFeatureExtraction(
       ctx.themeMapping[featureType],
       ctx.releaseVersion,
       outputPath,
-      bboxProgressCallback,
+      (update?: ProgressUpdate) =>
+        bboxProgressCallback(
+          update ?? {
+            stage: 'bbox',
+            message: `downloading ${featureType}`,
+          },
+        ),
     )
     updateProgressForCompletedFeature(
       result,
@@ -257,7 +276,13 @@ async function runFeatureExtraction(
       featureType,
       ctx.themeMapping[featureType],
       outputPath,
-      bboxProgressCallback,
+      (update?: ProgressUpdate) =>
+        bboxProgressCallback(
+          update ?? {
+            stage: 'bbox',
+            message: `filtering ${featureType} within bbox`,
+          },
+        ),
     )
     updateProgressForCompletedFeature(
       result,
@@ -288,13 +313,13 @@ async function runFeatureExtraction(
       featureType,
       ctx.themeMapping[featureType],
       outputPath,
-      (stage: string) => {
-        if (stage === 'geometry') {
-          geometryProgressCallback()
+      (update: ProgressUpdate) => {
+        if (update.stage === 'geometry') {
+          geometryProgressCallback(update)
           return
         }
 
-        bboxProgressCallback()
+        bboxProgressCallback(update)
       },
     )
 
@@ -357,10 +382,20 @@ async function processFeatureType(
       connection,
     )
   } catch (error) {
-    log.error(`❌ Processing failed for ${featureType}: ${error}`)
+    progressState.isProcessing = false
+    progressState.activeStage = null
+    progressState.currentMessage = `failed ${featureType}: ${error instanceof Error ? error.message : 'Unknown error'}`
+    updateProgressDisplay(
+      featureType,
+      index,
+      featureTypes.length,
+      progressState,
+      featureNameWidth,
+      indexWidth,
+    )
+    updateProgressStatus(progressState.currentMessage)
     return
   }
-  console.log()
 }
 
 /**
