@@ -65,10 +65,7 @@ const SMART_CLIP_FEATURE_TYPES = new Set([
  * @param clipMode - Active boundary clip mode
  * @returns True when the geometry should be modified via intersection
  */
-function shouldClipFeatureGeometry(
-  featureType: string,
-  clipMode: ClipMode,
-): boolean {
+function shouldClipFeatureGeometry(featureType: string, clipMode: ClipMode): boolean {
   if (clipMode === 'all') {
     return true
   }

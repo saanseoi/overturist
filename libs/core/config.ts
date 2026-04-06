@@ -237,7 +237,8 @@ export function validateTargetConfig(
   target: Target,
 ): Target {
   // CASE 1 : target=world AND dividionId - dividionId takes precedence over target=world
-  const hasDivisionId = cliArgs.divisionId || cliArgs.osmId || config.divisionId || false
+  const hasDivisionId =
+    cliArgs.divisionId || cliArgs.osmId || config.divisionId || false
   const isTargetWorld = target === 'world'
   if (isTargetWorld && hasDivisionId) {
     log.warn(kleur.yellow('⚠️  Target=world is ignored when DivisionId is set'))

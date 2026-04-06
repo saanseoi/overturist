@@ -83,7 +83,7 @@ export function displayTableHeader(ctx: ControlContext): void {
     countWidth,
   )
   progressTableState.rowStates = ctx.featureTypes.map((featureType, index) => {
-      const progress: ProgressState = {
+    const progress: ProgressState = {
       bboxComplete: false,
       geomComplete: false,
       hasGeometryPass: ctx.target === 'division' && !ctx.skipBoundaryClip,

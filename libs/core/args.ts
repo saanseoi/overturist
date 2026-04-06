@@ -36,7 +36,8 @@ const options: Record<string, OptionConfig> = {
     group: 'Geospatial',
   },
   division: {
-    description: "Filter results by this division's boundaries using its stable Overture id",
+    description:
+      "Filter results by this division's boundaries using its stable Overture id",
     boolean: false,
     alias: 'd',
     group: 'Geospatial',
