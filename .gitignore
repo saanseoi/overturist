@@ -30,7 +30,7 @@ node_modules/
 !.env.example
 
 # data exports
-data/
+/data/
 
 # cache directory
 .cache/
