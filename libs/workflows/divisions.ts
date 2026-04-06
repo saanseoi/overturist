@@ -88,6 +88,13 @@ export async function initializeDivision(
       divisionId: division.id,
       division,
     }
+  } else if (cliArgs.osmId) {
+    const division = await getDivisionByOsmId(cliArgs.osmId, releaseVersion, locale)
+
+    return {
+      divisionId: division.id,
+      division,
+    }
   } else if (config.divisionId) {
     const division = await getCachedDivisionOrLoad(
       config.divisionId,
@@ -251,7 +258,7 @@ async function selectDivisionFromSearch(params: {
 
 /**
  * Resolves a division reference to a concrete division record.
- * @param divisionId - Overture division ID or supported OSM relation reference
+ * @param divisionId - Overture division ID
  * @param releaseVersion - Release version to resolve against
  * @param locale - Preferred locale used to localize the resolved hierarchy
  * @returns Promise resolving to the matched division record
@@ -261,36 +268,6 @@ async function getCachedDivisionOrLoad(
   releaseVersion: Version,
   locale: string,
 ): Promise<Division> {
-  const sourceRecordIdPattern = normalizeOsmRelationRecordId(divisionId)
-  if (sourceRecordIdPattern) {
-    // OSM relation lookups are resolved directly because the input id is not the cache key.
-    const divisions = await getDivisionsBySourceRecordId(
-      releaseVersion,
-      sourceRecordIdPattern,
-      [],
-      locale,
-    )
-
-    if (divisions.length === 0) {
-      bail(
-        `Division source ${kleur.yellow(divisionId)} not found in release "${kleur.cyan(releaseVersion)}"`,
-      )
-    }
-
-    if (divisions.length > 1) {
-      const divisionSummary = divisions
-        .slice(0, 5)
-        .map(division => division.names?.primary || division.id)
-        .join(', ')
-
-      bail(
-        `Division source ${kleur.yellow(divisionId)} matched multiple divisions: ${kleur.cyan(divisionSummary)}`,
-      )
-    }
-
-    return divisions[0]
-  }
-
   const cachedDivision = await getCachedDivision(releaseVersion, divisionId)
 
   if (cachedDivision) {
@@ -309,6 +286,52 @@ async function getCachedDivisionOrLoad(
   if (!divisions || divisions.length === 0) {
     bail(
       `Division ${kleur.yellow(divisionId)} not found in release "${kleur.cyan(releaseVersion)}"`,
+    )
+  }
+
+  return divisions[0]
+}
+
+/**
+ * Resolves an OSM relation id to a concrete division record.
+ * @param osmId - Raw OSM relation id provided by the caller
+ * @param releaseVersion - Release version to resolve against
+ * @param locale - Preferred locale used to localize the resolved hierarchy
+ * @returns Promise resolving to the matched division record
+ */
+async function getDivisionByOsmId(
+  osmId: string,
+  releaseVersion: Version,
+  locale: string,
+): Promise<Division> {
+  const sourceRecordIdPattern = normalizeOsmRelationRecordId(osmId)
+
+  if (!sourceRecordIdPattern) {
+    bail(`Invalid OSM relation id: ${kleur.yellow(osmId)}`)
+  }
+
+  // OSM relation lookups are resolved directly because the input id is not the cache key.
+  const divisions = await getDivisionsBySourceRecordId(
+    releaseVersion,
+    sourceRecordIdPattern,
+    [],
+    locale,
+  )
+
+  if (divisions.length === 0) {
+    bail(
+      `Division source ${kleur.yellow(osmId)} not found in release "${kleur.cyan(releaseVersion)}"`,
+    )
+  }
+
+  if (divisions.length > 1) {
+    const divisionSummary = divisions
+      .slice(0, 5)
+      .map(division => division.names?.primary || division.id)
+      .join(', ')
+
+    bail(
+      `Division source ${kleur.yellow(osmId)} matched multiple divisions: ${kleur.cyan(divisionSummary)}`,
     )
   }
 

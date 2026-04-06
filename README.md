@@ -65,7 +65,7 @@ For inspecting one division record and saving its metadata into the release hier
 bun overturist.ts info [OPTIONS]
 ```
 
-**Key difference**: `get` and `info` both run without further user input and require the relevant division to be provided as an option (`-d`) or env variable (`DIVISION_ID`).
+**Key difference**: `get` and `info` both run without further user input and require the relevant division to be provided as an Overture division id (`-d` / `DIVISION_ID`) or an OSM relation id (`--osmId`).
 
 ### Command Line Options
 
@@ -81,7 +81,8 @@ bun overturist.ts info [OPTIONS]
 
 | Option           | Alias | Description                                                                    |
 | ---------------- | ----- | ------------------------------------------------------------------------------ |
-| `--division`     | `-d`  | Filter results by division's boundaries                                        |
+| `--division`     | `-d`  | Filter results by division's boundaries using its stable Overture id           |
+| `--osmId`        | -     | Resolve the division from an OSM relation id                                   |
 | `--bbox`         | -     | Filter results by bounding box (e.g., -71.068,42.353,-71.058,42.363)           |
 | `--skip-bc`     | -     | Skip division boundary clipping and rely on bbox only                        |
 | `--clip-mode`   | -     | Choose `preserve`, `smart`, or `all` boundary clipping                       |
@@ -248,6 +249,7 @@ The `info` command saves a single division record as `division.json` inside the 
 
 1. **Command-line options** (highest priority):
    - `--division`: Override division ID for the target region
+   - `--osmId`: Resolve the target region from an OSM relation id
    - `--bbox`: Override bounding box coordinates (format: xmin,ymin,xmax,ymax)
    - `--clip-mode`: Choose `preserve`, `smart`, or `all` boundary clipping
    - `--skip-bc`: Skip the division boundary pass and rely on bbox filtering only
