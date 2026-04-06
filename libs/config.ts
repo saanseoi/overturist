@@ -21,6 +21,7 @@ const CONFIG: Config = {
   releaseFn: 'releases.json',
   releaseUrl: 'https://docs.overturemaps.org/release-calendar/',
   target: DEFAULT_TARGET,
+  confirmFeatureSelection: true,
   bbox: undefined,
   divisionId: undefined,
   noClip: undefined,
@@ -76,6 +77,14 @@ function applyEnvVars(config: Config): Config {
     updatedConfig.featureTypes = process.env.FEATURE_TYPES.split(',')
   }
 
+  // Apply interactive feature confirmation preference.
+  if (process.env.CONFIRM_FEATURE_SELECTION) {
+    updatedConfig.confirmFeatureSelection = validateBooleanConfig(
+      process.env.CONFIRM_FEATURE_SELECTION,
+      'CONFIRM_FEATURE_SELECTION',
+    )
+  }
+
   // Apply onFileExists
   if (process.env.ON_FILE_EXISTS) {
     updatedConfig.onFileExists = validateOnFileExists(process.env.ON_FILE_EXISTS)
@@ -123,6 +132,29 @@ export function validateOnFileExists(
     return action as OnExistingFilesAction
   }
   return DEFAULT_ON_FILE_EXISTS
+}
+
+/**
+ * Validates a boolean-like environment variable value.
+ * @param value - Raw environment variable value
+ * @param envVarName - Environment variable name for error messaging
+ * @returns Parsed boolean value
+ * @remarks Accepts `true`/`false` and `1`/`0` for parity with existing config flags.
+ */
+export function validateBooleanConfig(value: string, envVarName: string): boolean {
+  const normalizedValue = value.trim().toLowerCase()
+
+  if (normalizedValue === 'true' || normalizedValue === '1') {
+    return true
+  }
+
+  if (normalizedValue === 'false' || normalizedValue === '0') {
+    return false
+  }
+
+  bail(
+    `Invalid ${envVarName}: ${value} ${kleur.grey('- use true, false, 1, or 0')}`,
+  )
 }
 
 /**

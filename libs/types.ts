@@ -72,6 +72,7 @@ export type Config = {
   selectedDivision?: Division
   noClip?: boolean
   featureTypes?: string[]
+  confirmFeatureSelection: boolean
   onFileExists?: OnExistingFilesAction
 }
 

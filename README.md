@@ -163,6 +163,7 @@ bun overturist.ts get --division <id> --theme buildings
 # Priority 2: Environment variables (.env file)
 # DIVISION_ID="b4f09a9f-4cba-4a7c-bf58-2e63bc2e913d"
 # FEATURE_TYPES="building,address"
+# CONFIRM_FEATURE_SELECTION=true
 # ON_FILE_EXISTS="replace"
 
 # Priority 3: Default values
@@ -185,6 +186,8 @@ The download menu offers:
 - **The whole world**: Download the full world dataset
 
 The interactive mode is ideal for exploratory use cases where you want to search for specific administrative divisions or browse available releases before downloading.
+
+If you preselect feature types with `--type`, `--theme`, or `FEATURE_TYPES`, interactive mode will ask you to confirm that selection by default. Set `CONFIRM_FEATURE_SELECTION=false` to accept the preselection without the confirmation prompt. Programmatic `get` commands do not prompt for feature confirmation.
 
 ## Development
 
