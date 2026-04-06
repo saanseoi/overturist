@@ -24,6 +24,25 @@ Note that the Overture Maps Foundation maintain a 60 day retention policy. Data 
 
 ## Installation
 
+### Run Without Installing
+
+Requires [Bun](https://bun.sh/).
+
+```bash
+bunx --package @saanseoi/overturist overturist --help
+```
+
+### Install Globally
+
+Requires [Bun](https://bun.sh/) and is (currently) supported on Linux x64.
+
+```bash
+npm install -g @saanseoi/overturist
+overturist --help
+```
+
+### Local Development
+
 1. Clone the repository:
 
 ```bash
@@ -36,6 +55,17 @@ cd overturist
 ```bash
 bun install
 ```
+
+## Release Status
+
+- Package name: `@saanseoi/overturist`
+- Command name: `overturist`
+- Runtime requirement: Bun
+- Current platform support for published package: Linux x64
+
+The package currently depends on `@duckdb/node-bindings-linux-x64`, so npm publication is intentionally limited to Linux x64.
+
+The published `overturist` command is a small launcher script that executes the TypeScript entrypoint with Bun.
 
 ## Usage
 
