@@ -1,5 +1,6 @@
 import readline from 'node:readline'
 import kleur from 'kleur'
+import stringWidth from 'string-width'
 import { note } from '../core/note'
 import { getCount, getLastReleaseCount } from '../data/queries'
 import type { ControlContext, ProgressState, ProgressUpdate } from '../core/types'
@@ -12,6 +13,8 @@ const PLANNED_CELL = '⬜'
 const COMPLETE_CELL = '☑️'
 const NOT_APPLICABLE_CELL = '⬚'
 const SKIPPED_CELL = '⏭️'
+const CELL_COLUMN_WIDTH = 6
+const DIFF_COLUMN_WIDTH = 9
 
 type ProgressTableState = {
   isActive: boolean
@@ -24,6 +27,7 @@ type ProgressTableState = {
     progress: ProgressState
     featureNameWidth: number
     indexWidth: number
+    countWidth: number
   } | null>
   lineCount: number
   statusMessage: string
@@ -55,7 +59,8 @@ export function displayExtractionPlan(ctx: ControlContext): void {
     [
       `${kleur.bold('Release')}      ${kleur.bold(kleur.cyan(version))}${isLatest ? ` ${kleur.red('(latest)')}` : ''}`,
       `${kleur.bold('Schema')}       ${kleur.bold(kleur.cyan(schema))}${isNewSchema ? ` ${kleur.red('(new)')}` : ''}`,
-      `${kleur.bold('Target')}       ${kleur.bold(kleur.cyan(ctx.target))}${ctx.noClip ? ` ${kleur.red('(skipBoundaryFilter)')}` : ''}`,
+      `${kleur.bold('Target')}       ${kleur.bold(kleur.cyan(ctx.target))}${ctx.skipBoundaryClip ? ` ${kleur.red('(skipBoundaryClip)')}` : ''}`,
+      `${kleur.bold('Clip Mode')}    ${kleur.cyan(ctx.clipMode)}`,
       `${kleur.bold('BBox')}         ${kleur.cyan(bboxText)}`,
       `${kleur.bold('Output')}       ${kleur.cyan(outputDirText)}`,
     ].join('\n'),
@@ -69,16 +74,19 @@ export function displayExtractionPlan(ctx: ControlContext): void {
  * @returns Nothing. Starts the in-place renderer.
  */
 export function displayTableHeader(ctx: ControlContext): void {
+  const countWidth = getCountColumnWidth(ctx.target)
+
   progressTableState.isActive = true
   progressTableState.headerLines = buildProgressHeader(
     ctx.featureNameWidth,
     ctx.indexWidth,
+    countWidth,
   )
   progressTableState.rowStates = ctx.featureTypes.map((featureType, index) => {
-    const progress: ProgressState = {
+      const progress: ProgressState = {
       bboxComplete: false,
       geomComplete: false,
-      hasGeometryPass: ctx.target === 'division' && !ctx.noClip,
+      hasGeometryPass: ctx.target === 'division' && !ctx.skipBoundaryClip,
       isProcessing: false,
       activeStage: null,
       featureCount: 0,
@@ -93,6 +101,7 @@ export function displayTableHeader(ctx: ControlContext): void {
       progress,
       featureNameWidth: ctx.featureNameWidth,
       indexWidth: ctx.indexWidth,
+      countWidth,
     }
   })
   progressTableState.rowLines = progressTableState.rowStates.map(rowState =>
@@ -104,6 +113,7 @@ export function displayTableHeader(ctx: ControlContext): void {
           rowState.progress,
           rowState.featureNameWidth,
           rowState.indexWidth,
+          rowState.countWidth,
         )
       : '',
   )
@@ -135,6 +145,7 @@ export function updateProgressDisplay(
   progress: ProgressState,
   featureNameWidth: number,
   indexWidth: number,
+  countWidth = 7,
 ): void {
   const line = renderProgressRow(
     featureType,
@@ -143,12 +154,14 @@ export function updateProgressDisplay(
     progress,
     featureNameWidth,
     indexWidth,
+    countWidth,
   )
 
   if (!progressTableState.isActive) {
     const [headerLine, separatorLine] = buildProgressHeader(
       featureNameWidth,
       indexWidth,
+      countWidth,
     )
     console.log(headerLine)
     console.log(separatorLine)
@@ -163,6 +176,7 @@ export function updateProgressDisplay(
     progress,
     featureNameWidth,
     indexWidth,
+    countWidth,
   }
   progressTableState.rowLines[index] = line
   progressTableState.statusMessage = formatStatusLine(progress)
@@ -245,6 +259,7 @@ export async function handleSkippedFeature(
   index: number,
   outputPath: string,
 ): Promise<void> {
+  const countWidth = getCountColumnWidth(controlContext.target)
   let existingCount = 0
   try {
     existingCount = await getCount(outputPath)
@@ -255,7 +270,9 @@ export async function handleSkippedFeature(
   const lastReleaseCount = await getLastReleaseCount(controlContext, featureType)
   const diffText = toDiffText(getDiffCount(existingCount, lastReleaseCount))
   const geomState =
-    controlContext.target === 'division' && !controlContext.noClip ? 'skipped' : 'na'
+    controlContext.target === 'division' && !controlContext.skipBoundaryClip
+      ? 'skipped'
+      : 'na'
 
   const skippedProgress = buildProgressLine({
     featureType,
@@ -263,16 +280,17 @@ export async function handleSkippedFeature(
     total: controlContext.featureTypes.length,
     featureNameWidth: controlContext.featureNameWidth,
     indexWidth: controlContext.indexWidth,
+    countWidth,
     bboxCell: renderCell('skipped'),
     geomCell: renderCell(geomState),
-    countText: existingCount.toString().padStart(7),
+    countText: existingCount.toString(),
     diffText,
   })
 
   if (progressTableState.isActive) {
     progressTableState.rowStates[index] = null
     progressTableState.rowLines[index] = skippedProgress
-    progressTableState.statusMessage = `Skipping ${kleur.cyan(featureType)}`
+    progressTableState.statusMessage = `Skipping ${kleur.cyan(`${controlContext.themeMapping[featureType]}/${featureType}`)}`
     renderProgressTable()
     return
   }
@@ -328,9 +346,11 @@ export function calculateColumnWidths(featureTypes: string[]): {
 function buildProgressHeader(
   featureNameWidth: number,
   indexWidth: number,
+  countWidth: number,
 ): [string, string] {
-  const headerLine = `${kleur.white(''.padEnd(indexWidth + 1))} ${kleur.cyan('FEATURE'.padEnd(featureNameWidth + 1))} ${kleur.white('BBOX'.padEnd(6))} ${kleur.white('GEOM'.padEnd(6))} ${kleur.white('COUNT'.padEnd(9))} ${kleur.white('DIFF'.padEnd(8))}`
-  const separatorLine = ` ${kleur.gray('─'.repeat(indexWidth + 2))}${kleur.gray('─'.repeat(featureNameWidth))} ${kleur.gray('─'.repeat(6))} ${kleur.gray('─'.repeat(6))} ${kleur.gray('─'.repeat(9))} ${kleur.gray('─'.repeat(9))}`
+  const countColumnWidth = Math.max(countWidth, stringWidth('COUNT'))
+  const headerLine = `${kleur.white(''.padEnd(indexWidth + 1))} ${kleur.cyan('FEATURE'.padEnd(featureNameWidth + 1))} ${kleur.white('BBOX'.padEnd(CELL_COLUMN_WIDTH))} ${kleur.white('GEOM'.padEnd(CELL_COLUMN_WIDTH))} ${kleur.white('COUNT'.padEnd(countColumnWidth))} ${kleur.white('DIFF'.padEnd(DIFF_COLUMN_WIDTH - 1))}`
+  const separatorLine = ` ${kleur.gray('─'.repeat(indexWidth + 2))}${kleur.gray('─'.repeat(featureNameWidth))} ${kleur.gray('─'.repeat(CELL_COLUMN_WIDTH))} ${kleur.gray('─'.repeat(CELL_COLUMN_WIDTH))} ${kleur.gray('─'.repeat(countColumnWidth))} ${kleur.gray('─'.repeat(DIFF_COLUMN_WIDTH))}`
   return [headerLine, separatorLine]
 }
 
@@ -351,6 +371,7 @@ function renderProgressRow(
   progress: ProgressState,
   featureNameWidth: number,
   indexWidth: number,
+  countWidth: number,
 ): string {
   const bboxState = progress.bboxComplete
     ? 'complete'
@@ -372,9 +393,10 @@ function renderProgressRow(
     total,
     featureNameWidth,
     indexWidth,
+    countWidth,
     bboxCell: renderCell(bboxState),
     geomCell: renderCell(geomState),
-    countText: (progress.featureCount || 0).toString().padStart(7),
+    countText: (progress.featureCount || 0).toString(),
     diffText: toDiffText(progress.diffCount),
   })
 }
@@ -390,6 +412,7 @@ function buildProgressLine(params: {
   total: number
   featureNameWidth: number
   indexWidth: number
+  countWidth: number
   bboxCell: string
   geomCell: string
   countText: string
@@ -401,6 +424,7 @@ function buildProgressLine(params: {
     total,
     featureNameWidth,
     indexWidth,
+    countWidth,
     bboxCell,
     geomCell,
     countText,
@@ -414,7 +438,8 @@ function buildProgressLine(params: {
 
   return (
     `${kleur.white(progressPrefix)} ${kleur.cyan(featureType.padEnd(featureNameWidth))} │ ` +
-    `${bboxCell.padEnd(6)} ${geomCell.padEnd(6)} ${kleur.white(countText)} ${diffText}`
+    `${padDisplayEnd(bboxCell, CELL_COLUMN_WIDTH)} ${padDisplayEnd(geomCell, CELL_COLUMN_WIDTH)} ` +
+    `${padDisplayStart(kleur.white(countText), countWidth)} ${padDisplayStart(diffText, DIFF_COLUMN_WIDTH)}`
   )
 }
 
@@ -427,23 +452,23 @@ function renderCell(
   state: 'planned' | 'active' | 'complete' | 'na' | 'skipped',
 ): string {
   if (state === 'complete') {
-    return kleur.green(COMPLETE_CELL.padEnd(6))
+    return kleur.green(COMPLETE_CELL)
   }
 
   if (state === 'na') {
-    return kleur.gray(NOT_APPLICABLE_CELL.padEnd(6))
+    return kleur.gray(NOT_APPLICABLE_CELL)
   }
 
   if (state === 'skipped') {
-    return kleur.yellow(SKIPPED_CELL.padEnd(6))
+    return kleur.yellow(SKIPPED_CELL)
   }
 
   if (state === 'active') {
     const frameIndex = Math.floor(Date.now() / 250) % ACTIVE_CELL_FRAMES.length
-    return kleur.yellow(ACTIVE_CELL_FRAMES[frameIndex].padEnd(6))
+    return kleur.yellow(ACTIVE_CELL_FRAMES[frameIndex])
   }
 
-  return kleur.white(PLANNED_CELL.padEnd(6))
+  return kleur.white(PLANNED_CELL)
 }
 
 /**
@@ -467,7 +492,38 @@ function formatStatusLine(progress: ProgressState): string {
 function buildStatusLine(message: string): string {
   const frameIndex = Math.floor(Date.now() / 250) % STATUS_SPINNER_FRAMES.length
   const frame = STATUS_SPINNER_FRAMES[frameIndex]
-  return `${kleur.yellow(frame)} ${kleur.white('Currently:')} ${message}`
+  return `${kleur.yellow(frame)} ${message}`
+}
+
+/**
+ * Selects the count-column width for the active target granularity.
+ * @param target - Extraction target for the current run
+ * @returns Width used to align numeric counts in the table
+ */
+function getCountColumnWidth(target: ControlContext['target']): number {
+  return target === 'division' ? 7 : 9
+}
+
+/**
+ * Pads text to a visual width while preserving ANSI colors.
+ * @param value - Styled or unstyled text
+ * @param width - Desired visual width
+ * @returns Right-padded text aligned by terminal display width
+ */
+function padDisplayEnd(value: string, width: number): string {
+  const padding = Math.max(width - stringWidth(value), 0)
+  return `${value}${' '.repeat(padding)}`
+}
+
+/**
+ * Left-pads text to a visual width while preserving ANSI colors.
+ * @param value - Styled or unstyled text
+ * @param width - Desired visual width
+ * @returns Left-padded text aligned by terminal display width
+ */
+function padDisplayStart(value: string, width: number): string {
+  const padding = Math.max(width - stringWidth(value), 0)
+  return `${' '.repeat(padding)}${value}`
 }
 
 /**
@@ -494,6 +550,7 @@ function renderProgressTable(): void {
         rowState.progress,
         rowState.featureNameWidth,
         rowState.indexWidth,
+        rowState.countWidth,
       )
     }),
     '',
