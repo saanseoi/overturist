@@ -36,7 +36,7 @@ const options: Record<string, OptionConfig> = {
     group: 'Geospatial',
   },
   division: {
-    description: "Filter results by this division's boundaries",
+    description: "Filter results by this division's boundaries or OSM relation id",
     boolean: false,
     alias: 'd',
     group: 'Geospatial',
@@ -46,7 +46,7 @@ const options: Record<string, OptionConfig> = {
     boolean: false,
     group: 'Geospatial',
   },
-  'skip-boundary-filter': {
+  'skip-bf': {
     description: 'Skip division boundary filtering and rely on bbox only',
     boolean: true,
     group: 'Geospatial',
@@ -133,10 +133,11 @@ export function handleArguments(argv: string[] = process.argv): CliArgs {
     divisionId,
     releaseVersion,
     bbox,
-    noClip: parsedArgs['skip-boundary-filter'],
+    noClip: parsedArgs['skip-bf'],
     target,
     locale,
     get: isGetCommand(argv),
+    info: isInfoCommand(argv),
   }
 }
 
@@ -167,6 +168,8 @@ function displayHelp() {
       '  > ' +
       kleur.cyan('bun overturist.ts ') +
       kleur.red('get') +
+      ' | ' +
+      kleur.yellow('info') +
       ' ' +
       kleur.gray('[OPTIONS]') +
       '\n',
@@ -174,6 +177,10 @@ function displayHelp() {
   console.log(kleur.white('ARGUMENTS:'))
   console.log(
     kleur.red('  get'.padEnd(20)) + kleur.white('Download without user input'),
+  )
+  console.log(
+    kleur.yellow('  info'.padEnd(20)) +
+      kleur.white('Inspect one division without user input'),
   )
   console.log()
   console.log(kleur.white('OPTIONS:'))
@@ -248,6 +255,10 @@ export function displayExamples() {
           command: 'bun overturist.ts get',
           description: `Run in scripting mode (set either ${kleur.gray('bbox')} or ${kleur.gray('division')} in .env variables or CLI arguments)`,
         },
+        {
+          command: 'bun overturist.ts info',
+          description: `Inspect one division from ${kleur.gray('DIVISION_ID')} or ${kleur.gray('--division')}`,
+        },
       ],
     },
     {
@@ -285,7 +296,7 @@ export function displayExamples() {
             'All features will fall within this bounding box (west, south, east, north)',
         },
         {
-          command: '--skip-boundary-filter',
+          command: '--skip-bf',
           description:
             'Skip boundary geometry, rely solely on bbox for results filtering',
         },
@@ -334,6 +345,10 @@ export function displayExamples() {
     {
       command: 'bun overturist.ts --type division,division_area',
       description: 'Interactive mode, pre-filter to 2 division types',
+    },
+    {
+      command: 'bun overturist.ts info --division b4f09a9f-4cba-4a7c-bf58-2e63bc2e913d',
+      description: 'Show division metadata and save it into the release hierarchy.',
     },
     {
       command: 'bun overturist.ts get --division b4f09a9f-4cba-4a7c-bf58-2e63bc2e913d',
@@ -417,6 +432,15 @@ function isGetCommand(argv: string[]): boolean {
 }
 
 /**
+ * Detects whether the CLI was invoked with the positional `info` command.
+ * @param argv - Raw process arguments, including runtime and script paths
+ * @returns True when the first positional argument is `info`
+ */
+function isInfoCommand(argv: string[]): boolean {
+  return argv[2] === 'info'
+}
+
+/**
  * Applies CLI example color conventions to a command string.
  * @param command - Example command string to colorize
  * @returns Colorized command string for terminal display
@@ -433,6 +457,10 @@ function colorizeExampleCommand(command: string): string {
   // Highlight the scripting subcommand when present.
   if (coloredCommand.includes(' get')) {
     coloredCommand = coloredCommand.replace(' get', ` ${kleur.red('get')}`)
+  }
+
+  if (coloredCommand.includes(' info')) {
+    coloredCommand = coloredCommand.replace(' info', ` ${kleur.yellow('info')}`)
   }
 
   // Highlight options whether they appear first or later in the command.

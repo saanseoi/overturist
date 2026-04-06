@@ -3,6 +3,7 @@ import kleur from 'kleur'
 import { handleArguments } from './libs/args'
 import { getConfig } from './libs/config'
 import { getCmd } from './libs/get'
+import { infoCmd } from './libs/info'
 import { handleMainMenu } from './libs/interactive'
 
 /**
@@ -31,6 +32,11 @@ async function main() {
   // If get command is used, run in non-interactive mode
   if (cliArgs.get) {
     await getCmd(CONFIG, cliArgs)
+    return
+  }
+
+  if (cliArgs.info) {
+    await infoCmd(CONFIG, cliArgs, false)
     return
   }
 

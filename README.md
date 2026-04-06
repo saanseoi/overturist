@@ -39,7 +39,7 @@ bun install
 
 ## Usage
 
-Overturist supports two distinct modes:
+Overturist supports three entry modes:
 
 ### Interactive Mode (Default)
 
@@ -57,7 +57,15 @@ For automation, CI/CD pipelines, and scripting:
 bun overturist.ts get [OPTIONS]
 ```
 
-**Key difference**: `get` command runs without further user input, and requires the relevant division to be provided as an option (`-d`) or env variable (`DIVISION_ID`).
+### Division Info Mode
+
+For inspecting one division record and saving its metadata into the release hierarchy:
+
+```bash
+bun overturist.ts info [OPTIONS]
+```
+
+**Key difference**: `get` and `info` both run without further user input and require the relevant division to be provided as an option (`-d`) or env variable (`DIVISION_ID`).
 
 ### Command Line Options
 
@@ -75,7 +83,7 @@ bun overturist.ts get [OPTIONS]
 | ---------------- | ----- | ------------------------------------------------------------------------------ |
 | `--division`     | `-d`  | Filter results by division's boundaries                                        |
 | `--bbox`         | -     | Filter results by bounding box (e.g., -71.068,42.353,-71.058,42.363)           |
-| `--skip-boundary-filter` | - | Skip division boundary filtering and rely on bbox only                     |
+| `--skip-bf` | - | Skip division boundary filtering and rely on bbox only                     |
 
 #### File Handling
 
@@ -117,6 +125,9 @@ bun overturist.ts --examples
 # Basic download (requires division_id)
 bun overturist.ts get --division <id>
 
+# Inspect one division and save it to ./data/<release>/divisions/.../division.json
+bun overturist.ts info --division <id>
+
 # Download specific theme
 bun overturist.ts get --division <id> --theme buildings
 
@@ -130,7 +141,7 @@ bun overturist.ts get --division <id> --replace
 bun overturist.ts get --division <id> --bbox -71.068,42.353,-71.058,42.363
 
 # Skip the division boundary filter and rely on bbox intersection only
-bun overturist.ts get --division <id> --skip-boundary-filter
+bun overturist.ts get --division <id> --skip-bf
 
 # Complex example with multiple options
 bun overturist.ts get \
@@ -162,11 +173,16 @@ bun overturist.ts get --division <id> --theme buildings
 
 When run without command-line options, Overturist enters interactive mode with a main menu:
 
-- **Download latest**: Downloads the most recent Overture Maps release using current configuration
-- **Repeat a search**: Browse and re-run previous administrative division searches (shows only when search history exists)
-- **Download historic**: Select and download from available historical releases (last 60 days)
+- **Download data**: Opens a second-level menu for downloading data
+- **Get division details**: Saves one division record into `./data` and prints it with formatting
 - **Settings**: Manage preferences and cache (show current config, reset preferences, view cache stats, purge cache)
 - **Exit**: Quit the application
+
+The download menu offers:
+
+- **Search**: Opens a third-level menu with `New search` and `Repeat a search`
+- **Provide an OSM Id**: Resolve an OSM relation id directly
+- **The whole world**: Download the full world dataset
 
 The interactive mode is ideal for exploratory use cases where you want to search for specific administrative divisions or browse available releases before downloading.
 
@@ -214,6 +230,8 @@ Downloaded data is saved as `parquet` files in the `./data/` directory organized
 - Feature type
 
 The tool handles file conflicts based on the selected strategy.
+
+The `info` command saves a single division record as `division.json` inside the same release and division hierarchy.
 
 ## Configuration
 
