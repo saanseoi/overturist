@@ -10,7 +10,7 @@ import {
   getCachedSearchResults,
 } from '../data/cache'
 import { DuckDBManager } from '../data/db'
-import { fileExists } from '../core/fs'
+import { fileExists, getFeatureOutputFilename } from '../core/fs'
 import {
   extractBoundsFromDivision,
   getDivisionsByIds,
@@ -383,7 +383,10 @@ async function processFeatureType(
   const { featureTypes, featureNameWidth, indexWidth } = ctx
   const countWidth = ctx.target === 'division' ? 7 : 9
 
-  const outputPath = path.join(ctx.outputDir, `${featureType}.parquet`)
+  const outputPath = path.join(
+    ctx.outputDir,
+    getFeatureOutputFilename(featureType, ctx.clipMode),
+  )
 
   const outputFileExists = await fileExists(outputPath)
   if (outputFileExists && ctx.onFileExists === 'skip') {
@@ -861,7 +864,10 @@ export async function downloadFullDataset(ctx: ControlContext): Promise<void> {
   try {
     for (const [index, featureType] of featureTypes.entries()) {
       const progress = `(${index + 1}/${featureTypes.length})`
-      const outputPath = path.join(outputDir, `${featureType}.parquet`)
+      const outputPath = path.join(
+        outputDir,
+        getFeatureOutputFilename(featureType, ctx.clipMode),
+      )
 
       // Check if file exists and handle according to onFileExists.
       if (await fileExists(outputPath)) {

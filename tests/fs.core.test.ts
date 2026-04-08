@@ -26,7 +26,6 @@ function createConfig(overrides: Partial<Config> = {}): Config {
 
 function createCliArgs(overrides: Partial<CliArgs> = {}): CliArgs {
   return {
-    onFileExists: 'skip',
     ...overrides,
   }
 }
@@ -106,12 +105,12 @@ describe('getOutputDir error paths', () => {
 })
 
 describe('initializeFileHandling', () => {
-  test('passes existing files and configured preference to the UI helper', async () => {
+  test('prefers the CLI file-handling flag over config defaults', async () => {
     const { initializeFileHandling } = await loadFsModule()
 
     const result = await initializeFileHandling(
-      createConfig({ onFileExists: 'replace' }),
-      createCliArgs({ onFileExists: 'abort' }),
+      createConfig({ onFileExists: 'abort' }),
+      createCliArgs({ onFileExists: 'replace' }),
       false,
       [],
       '/tmp/nonexistent-output',
@@ -119,6 +118,25 @@ describe('initializeFileHandling', () => {
     )
 
     assert.equal(result.onFileExists, 'skip')
+    assert.deepEqual(determineActionOnExistingFilesMock.mock.calls[0], [
+      [],
+      'replace',
+      false,
+    ])
+  })
+
+  test('falls back to config file-handling when the CLI is silent', async () => {
+    const { initializeFileHandling } = await loadFsModule()
+
+    await initializeFileHandling(
+      createConfig({ onFileExists: 'replace' }),
+      createCliArgs(),
+      false,
+      [],
+      '/tmp/nonexistent-output',
+      'smart',
+    )
+
     assert.deepEqual(determineActionOnExistingFilesMock.mock.calls[0], [
       [],
       'replace',

@@ -60,7 +60,6 @@ function createConfig(overrides: Partial<Config> = {}): Config {
 
 function createCliArgs(overrides: Partial<CliArgs> = {}): CliArgs {
   return {
-    onFileExists: 'skip',
     ...overrides,
   }
 }
@@ -438,6 +437,36 @@ describe('initializeBounds', () => {
     )
 
     assert.deepEqual(result.bbox, explicitBbox)
+  })
+
+  test('uses config clip mode when the CLI does not provide one', async () => {
+    const { initializeBounds } = await loadConfigModule()
+
+    const result = await initializeBounds(
+      createConfig({ clipMode: 'all' }),
+      createCliArgs(),
+      'world',
+      null,
+      null,
+      '2026-03-18.0',
+    )
+
+    assert.equal(result.clipMode, 'all')
+  })
+
+  test('prefers CLI clip mode over config clip mode', async () => {
+    const { initializeBounds } = await loadConfigModule()
+
+    const result = await initializeBounds(
+      createConfig({ clipMode: 'preserve' }),
+      createCliArgs({ clipMode: 'all' }),
+      'world',
+      null,
+      null,
+      '2026-03-18.0',
+    )
+
+    assert.equal(result.clipMode, 'all')
   })
 
   test('drops geometry when boundary clipping is skipped', async () => {

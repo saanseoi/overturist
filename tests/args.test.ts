@@ -158,9 +158,16 @@ describe('handleArguments', () => {
     assert.equal(cliArgs.onFileExists, 'replace')
   })
 
-  test('exits for invalid target values', () => {
+  test('parses explicit skip file handling without forcing it by default', () => {
+    const explicitSkipArgs = handleArguments(['bun', 'overturist.ts', 'get', '--skip'])
+    const defaultArgs = handleArguments(['bun', 'overturist.ts', 'get'])
+
+    assert.equal(explicitSkipArgs.onFileExists, 'skip')
+    assert.equal(defaultArgs.onFileExists, undefined)
+  })
+  test('exits when the removed legacy --target flag is used', () => {
     const result = withPatchedExit(() =>
-      handleArguments(['bun', 'overturist.ts', 'get', '--target', 'planet']),
+      handleArguments(['bun', 'overturist.ts', 'get', '--target', 'world']),
     )
 
     assert.equal(result.exitCode, 1)

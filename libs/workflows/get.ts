@@ -81,6 +81,7 @@ export async function resolveOptions(
     interactiveOpts,
     featureTypes,
     outputDir,
+    clipMode,
   )
 
   return {

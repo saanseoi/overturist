@@ -1,6 +1,12 @@
 import { outro } from '@clack/prompts'
 import kleur from 'kleur'
-import { getCachedSearchResults } from '../data/cache'
+import { note } from '../core/note'
+import {
+  getCachedDivision,
+  getCachedSearchResults,
+  getVersionsInCache,
+} from '../data/cache'
+import { initializeReleaseVersion } from '../data/releases'
 import { executeDownloadWorkflow, resolveOptions } from './get'
 import {
   infoCmd,
@@ -9,7 +15,7 @@ import {
 } from './info'
 import { initializeLocale } from '../core/config'
 import { localizeDivisionHierarchiesForRelease } from '../data/queries'
-import type { CliArgs, Config, Division } from '../core/types'
+import type { CliArgs, Config, Division, InteractiveOptions } from '../core/types'
 import {
   displayBanner,
   promptForAreaSearchAction,
@@ -29,6 +35,10 @@ import {
  */
 export async function handleMainMenu(CONFIG: Config, cliArgs: CliArgs) {
   displayBanner()
+
+  if (await handlePresetDownloadFlow(CONFIG, cliArgs)) {
+    return
+  }
 
   while (true) {
     const action = await promptForMainAction()
@@ -104,7 +114,26 @@ async function handleDivisionInfoMenu(config: Config, cliArgs: CliArgs): Promise
  * @returns Promise resolving when the user leaves the download menu
  */
 async function handleDownloadMenu(config: Config, cliArgs: CliArgs): Promise<void> {
+  const preselectedTarget = await getPresetDownloadTarget(config, cliArgs)
+
+  if (preselectedTarget) {
+    await displayPresetDownloadHeader(config, cliArgs, preselectedTarget)
+    const releaseOpts = await resolveInteractiveReleaseSelection(config, cliArgs)
+    const controlContext = await resolveOptions(config, cliArgs, {
+      ...releaseOpts,
+      ...preselectedTarget,
+    })
+
+    if (!controlContext) {
+      return
+    }
+
+    await executeDownloadWorkflow(controlContext)
+    return
+  }
+
   while (true) {
+    const releaseOpts = await resolveInteractiveReleaseSelection(config, cliArgs)
     const action = await promptForDownloadAction()
 
     switch (action) {
@@ -116,7 +145,7 @@ async function handleDownloadMenu(config: Config, cliArgs: CliArgs): Promise<voi
         }
 
         if (searchAction === 'new_search') {
-          const controlContext = await resolveOptions(config, cliArgs)
+          const controlContext = await resolveOptions(config, cliArgs, releaseOpts)
 
           if (!controlContext) {
             continue
@@ -137,6 +166,7 @@ async function handleDownloadMenu(config: Config, cliArgs: CliArgs): Promise<voi
 
       case 'download_osm_id': {
         const controlContext = await resolveOptions(config, cliArgs, {
+          ...releaseOpts,
           target: 'division',
           divisionLookupMode: 'osm',
         })
@@ -151,6 +181,7 @@ async function handleDownloadMenu(config: Config, cliArgs: CliArgs): Promise<voi
 
       case 'download_world': {
         const controlContext = await resolveOptions(config, cliArgs, {
+          ...releaseOpts,
           target: 'world',
         })
 
@@ -298,4 +329,204 @@ async function handleDivisionInfoSelection(
     selectedDivision: division,
   })
   await persistAndDisplayDivisionInfo(ctx)
+}
+
+/**
+ * Bypasses the main menu when the invocation already identifies a download target.
+ * @param config - Initial configuration object
+ * @param cliArgs - Command line arguments
+ * @returns Promise resolving to true when a direct download flow ran
+ */
+async function handlePresetDownloadFlow(
+  config: Config,
+  cliArgs: CliArgs,
+): Promise<boolean> {
+  const presetTarget = await getPresetDownloadTarget(config, cliArgs)
+
+  if (!presetTarget) {
+    return false
+  }
+
+  await displayPresetDownloadHeader(config, cliArgs, presetTarget)
+  const releaseOpts = await resolveInteractiveReleaseSelection(config, cliArgs)
+  const controlContext = await resolveOptions(config, cliArgs, {
+    ...releaseOpts,
+    ...presetTarget,
+  })
+
+  if (!controlContext) {
+    return true
+  }
+
+  await executeDownloadWorkflow(controlContext)
+  return true
+}
+
+/**
+ * Resolves any direct target selection that should skip the interactive target menu.
+ * @param config - Initial configuration object
+ * @param cliArgs - Command line arguments
+ * @returns Interactive target overrides or null when the user should see the normal menu
+ */
+async function getPresetDownloadTarget(
+  config: Config,
+  cliArgs: CliArgs,
+): Promise<InteractiveOptions | null> {
+  if (cliArgs.world) {
+    return { target: 'world' }
+  }
+
+  if (cliArgs.osmIdRequested || cliArgs.osmId) {
+    return {
+      target: 'division',
+      divisionLookupMode: 'osm',
+    }
+  }
+
+  if (cliArgs.divisionRequested || cliArgs.divisionId || config.divisionId) {
+    return { target: 'division' }
+  }
+
+  if (cliArgs.bboxRequested || cliArgs.bbox) {
+    return { target: 'bbox' }
+  }
+
+  if (config.target === 'world') {
+    return { target: 'world' }
+  }
+
+  if (config.target === 'bbox' && config.bbox) {
+    return { target: 'bbox' }
+  }
+
+  if (config.divisionId) {
+    return { target: 'division' }
+  }
+
+  return null
+}
+
+/**
+ * Prompts for a release version before the interactive target-specific flow continues.
+ * @param config - Initial configuration object
+ * @param cliArgs - Command line arguments
+ * @returns Interactive release overrides for downstream option resolution
+ */
+async function resolveInteractiveReleaseSelection(
+  config: Config,
+  cliArgs: CliArgs,
+): Promise<Pick<InteractiveOptions, 'releaseVersion' | 'releaseData'>> {
+  if (cliArgs.releaseVersion || config.releaseVersion) {
+    return {}
+  }
+
+  const { releaseVersion, releaseData } = await initializeReleaseVersion(
+    config,
+    cliArgs,
+    {
+      releaseVersion: null,
+    },
+  )
+
+  return {
+    releaseVersion,
+    releaseData,
+  }
+}
+
+/**
+ * Displays the resolved or pending target before interactive download setup continues.
+ * @param config - Initial configuration object
+ * @param cliArgs - Command line arguments
+ * @param interactiveOpts - Interactive target overrides
+ * @returns Promise resolving when the header has been rendered
+ */
+async function displayPresetDownloadHeader(
+  config: Config,
+  cliArgs: CliArgs,
+  interactiveOpts: InteractiveOptions,
+): Promise<void> {
+  if (interactiveOpts.target === 'world') {
+    note(`${kleur.bold('Target:')} ${kleur.cyan('World')}`, 'Download Data')
+    return
+  }
+
+  if (interactiveOpts.target === 'bbox') {
+    note(
+      [
+        `${kleur.bold('Target:')} ${kleur.cyan('Bounding box')}`,
+        `${kleur.bold('Source:')} ${kleur.gray(cliArgs.bbox ? 'CLI' : 'Config')}`,
+      ].join('\n'),
+      'Download Data',
+    )
+    return
+  }
+
+  const divisionId = cliArgs.divisionId || config.divisionId
+
+  if (divisionId) {
+    const cachedDivision = await findCachedDivisionSummary(divisionId)
+
+    if (cachedDivision) {
+      const hierarchy =
+        cachedDivision.hierarchies?.[0]?.map(entry => entry.name).join(' / ') || '-'
+      note(
+        [
+          `${kleur.bold('Target:')} ${kleur.cyan(cachedDivision.names?.primary || cachedDivision.id)}`,
+          `${kleur.bold('Hierarchy:')} ${kleur.gray(hierarchy)}`,
+          `${kleur.bold('GERS Id:')} ${kleur.yellow(cachedDivision.id)}`,
+        ].join('\n'),
+        'Download Data',
+      )
+      return
+    }
+
+    note(
+      [
+        `${kleur.bold('Target:')} ${kleur.cyan('Division')}`,
+        `${kleur.bold('GERS Id:')} ${kleur.yellow(divisionId)} ${kleur.green('(NEW)')}`,
+      ].join('\n'),
+      'Download Data',
+    )
+    return
+  }
+
+  if (cliArgs.osmId) {
+    note(
+      [
+        `${kleur.bold('Target:')} ${kleur.cyan('Division')}`,
+        `${kleur.bold('OSM Id:')} ${kleur.yellow(cliArgs.osmId)} ${kleur.green('(NEW)')}`,
+      ].join('\n'),
+      'Download Data',
+    )
+    return
+  }
+
+  if (interactiveOpts.divisionLookupMode === 'osm' || cliArgs.osmIdRequested) {
+    note(
+      `${kleur.bold('Target:')} ${kleur.cyan('Division for OSM relation id')}`,
+      'Download Data',
+    )
+    return
+  }
+
+  note(`${kleur.bold('Target:')} ${kleur.cyan('Division')}`, 'Download Data')
+}
+
+/**
+ * Finds a cached division record across locally cached versions.
+ * @param divisionId - Division identifier to look up
+ * @returns Cached division when present, otherwise null
+ */
+async function findCachedDivisionSummary(divisionId: string): Promise<Division | null> {
+  const cachedVersions = await getVersionsInCache()
+
+  for (const version of cachedVersions) {
+    const cachedDivision = await getCachedDivision(version, divisionId)
+    if (cachedDivision) {
+      return cachedDivision
+    }
+  }
+
+  return null
 }

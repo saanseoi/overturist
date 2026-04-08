@@ -103,7 +103,6 @@ function createConfig(overrides: Partial<Config> = {}): Config {
 
 function createCliArgs(overrides: Partial<CliArgs> = {}): CliArgs {
   return {
-    onFileExists: 'skip',
     ...overrides,
   }
 }
@@ -309,6 +308,25 @@ describe('initializeThemeMapping', () => {
 
     assert.deepEqual(result.featureTypes, ['building', 'segment'])
     assert.equal(logState.info.mock.calls.length, 1)
+  })
+
+  test('uses env feature types in non-interactive mode when CLI input is absent', async () => {
+    const { initializeThemeMapping } = await loadThemesModule()
+    getCachedThemeMappingMock.mockImplementationOnce(
+      async () =>
+        ({ building: 'buildings', segment: 'transportation' }) as ThemeMapping,
+    )
+
+    const result = await initializeThemeMapping(
+      '2026-03-18.0',
+      createReleaseData(),
+      createConfig({ featureTypes: ['segment'] }),
+      createCliArgs(),
+      false,
+    )
+
+    assert.deepEqual(result.featureTypes, ['segment'])
+    assert.equal(selectFeatureTypesInteractivelyMock.mock.calls.length, 0)
   })
 
   test('bails on invalid feature types from CLI input', async () => {
