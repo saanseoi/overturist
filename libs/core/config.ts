@@ -26,7 +26,7 @@ const CONFIG: Config = {
   bbox: undefined,
   divisionId: undefined,
   skipBoundaryClip: undefined,
-  clipMode: 'preserve',
+  clipMode: 'smart',
   onFileExists: undefined,
 }
 /**
@@ -37,9 +37,10 @@ const CONFIG: Config = {
 function applyEnvVars(config: Config): Config {
   const updatedConfig = { ...config }
 
-  // Apply download target if defined
-  if (process.env.TARGET) {
-    updatedConfig.target = validateTarget(process.env.TARGET)
+  // Apply the configured filter mode if defined. `TARGET` remains a compatibility alias.
+  const configuredFilterMode = process.env.FILTER_MODE || process.env.TARGET
+  if (configuredFilterMode) {
+    updatedConfig.target = validateTarget(configuredFilterMode)
   }
 
   // Apply locale if defined
@@ -157,7 +158,7 @@ export function validateClipMode(clipMode: string | undefined): ClipMode {
     return clipMode as ClipMode
   }
 
-  return 'preserve'
+  return 'smart'
 }
 
 /**
@@ -214,13 +215,46 @@ export function initializeTarget(
   cliArgs: CliArgs,
   interactiveOpts?: InteractiveOptions | false,
 ): { target: Target } {
-  // Resolve the requested target from interactive input, CLI overrides, then config defaults.
-  const target =
-    (interactiveOpts as InteractiveOptions | undefined)?.target ||
-    cliArgs.target ||
-    config.target
+  // Resolve the requested target from interactive input, explicit location flags, then config defaults.
+  const target = resolveRequestedTarget(config, cliArgs, interactiveOpts)
 
   return { target: validateTargetConfig(config, cliArgs, target) }
+}
+
+/**
+ * Resolves the requested target before precedence rules are normalized.
+ * @param config - Configuration object with environment-derived defaults
+ * @param cliArgs - Parsed CLI arguments
+ * @param interactiveOpts - Interactive overrides
+ * @returns Requested target before world/division/bbox conflict handling
+ */
+function resolveRequestedTarget(
+  config: Config,
+  cliArgs: CliArgs,
+  interactiveOpts?: InteractiveOptions | false,
+): Target {
+  if (interactiveOpts && interactiveOpts.target) {
+    return interactiveOpts.target
+  }
+
+  if (
+    cliArgs.divisionRequested ||
+    cliArgs.osmIdRequested ||
+    cliArgs.divisionId ||
+    cliArgs.osmId
+  ) {
+    return 'division'
+  }
+
+  if (cliArgs.bboxRequested || cliArgs.bbox) {
+    return 'bbox'
+  }
+
+  if (cliArgs.world) {
+    return 'world'
+  }
+
+  return config.target
 }
 
 /**
