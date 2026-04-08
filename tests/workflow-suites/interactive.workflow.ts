@@ -10,6 +10,7 @@ import type {
 
 const abs = (relativePath: string) => new URL(relativePath, import.meta.url).pathname
 
+const cacheDivisionMock = mock(async () => {})
 const getCachedSearchResultsMock = mock(
   async () =>
     ({
@@ -43,8 +44,13 @@ const resolveDivisionInfoContextMock = mock(async () => ({
   outputDir: '/tmp/info-output',
 }))
 const initializeLocaleMock = mock(() => ({ locale: 'en' }))
-const localizeDivisionHierarchiesForReleaseMock = mock(
-  async (_version: string, divisions: Division[], _locale: string) => divisions,
+const getDivisionsByIdsMock = mock(
+  async (
+    _version: string,
+    _divisionIds: string[],
+    _localize: boolean,
+    _locale?: string,
+  ) => [] as Division[],
 )
 const displayBannerMock = mock(() => {})
 const promptForAreaSearchActionMock = mock(
@@ -94,9 +100,13 @@ const resetPreferencesMock = mock(async () => {})
 const showCacheStatsMock = mock(async () => {})
 const purgeCacheMock = mock(async () => {})
 const noteMock = mock(() => {})
+const bailMock = mock((msg?: string) => {
+  throw new Error(msg ?? 'bail')
+})
 
 async function loadInteractiveModule() {
   mock.module(abs('../../libs/data/cache.ts'), () => ({
+    cacheDivision: cacheDivisionMock,
     getCachedDivision: getCachedDivisionMock,
     getCachedSearchResults: getCachedSearchResultsMock,
     getVersionsInCache: getVersionsInCacheMock,
@@ -120,7 +130,7 @@ async function loadInteractiveModule() {
     initializeLocale: initializeLocaleMock,
   }))
   mock.module(abs('../../libs/data/queries.ts'), () => ({
-    localizeDivisionHierarchiesForRelease: localizeDivisionHierarchiesForReleaseMock,
+    getDivisionsByIds: getDivisionsByIdsMock,
   }))
   const uiModule = {
     displayBanner: displayBannerMock,
@@ -155,6 +165,12 @@ async function loadInteractiveModule() {
   }))
   mock.module(abs('../../libs/core/note'), () => ({
     note: noteMock,
+  }))
+  mock.module(abs('../../libs/core/utils.ts'), () => ({
+    bail: bailMock,
+  }))
+  mock.module(abs('../../libs/core/utils'), () => ({
+    bail: bailMock,
   }))
 
   return await import(
@@ -233,6 +249,7 @@ function createControlContext(): ControlContext {
 }
 
 beforeEach(() => {
+  cacheDivisionMock.mockClear()
   getCachedSearchResultsMock.mockClear()
   getCachedDivisionMock.mockClear()
   getVersionsInCacheMock.mockClear()
@@ -243,7 +260,7 @@ beforeEach(() => {
   persistAndDisplayDivisionInfoMock.mockClear()
   resolveDivisionInfoContextMock.mockClear()
   initializeLocaleMock.mockClear()
-  localizeDivisionHierarchiesForReleaseMock.mockClear()
+  getDivisionsByIdsMock.mockClear()
   displayBannerMock.mockClear()
   promptForAreaSearchActionMock.mockClear()
   promptForDownloadActionMock.mockClear()
@@ -257,6 +274,7 @@ beforeEach(() => {
   showCacheStatsMock.mockClear()
   purgeCacheMock.mockClear()
   noteMock.mockClear()
+  bailMock.mockClear()
 
   getCachedSearchResultsMock.mockImplementation(async () => ({
     version: '2026-03-18.0',
@@ -281,9 +299,7 @@ beforeEach(() => {
     outputDir: '/tmp/info-output',
   }))
   initializeLocaleMock.mockImplementation(() => ({ locale: 'en' }))
-  localizeDivisionHierarchiesForReleaseMock.mockImplementation(
-    async (_version: string, divisions: Division[], _locale: string) => divisions,
-  )
+  getDivisionsByIdsMock.mockImplementation(async () => [createDivision('division-1')])
   displayBannerMock.mockImplementation(() => {})
   promptForAreaSearchActionMock.mockImplementation(
     async (_label?: string) => 'new_search',
@@ -308,6 +324,9 @@ beforeEach(() => {
   showCacheStatsMock.mockImplementation(async () => {})
   purgeCacheMock.mockImplementation(async () => {})
   noteMock.mockImplementation(() => {})
+  bailMock.mockImplementation((msg?: string) => {
+    throw new Error(msg ?? 'bail')
+  })
 })
 
 afterEach(() => {
@@ -315,6 +334,19 @@ afterEach(() => {
 })
 
 describe('handleMainMenu', () => {
+  test('fails fast when --bbox is provided without coordinates and config has no bbox', async () => {
+    const { handleMainMenu } = await loadInteractiveModule()
+
+    await assert.rejects(
+      handleMainMenu(createConfig(), createCliArgs({ bboxRequested: true })),
+      /--bbox flag requires bbox coordinates/,
+    )
+
+    assert.equal(noteMock.mock.calls.length, 0)
+    assert.equal(resolveOptionsMock.mock.calls.length, 0)
+    assert.equal(executeDownloadWorkflowMock.mock.calls.length, 0)
+  })
+
   test('routes the world download flow through resolveOptions and executeDownloadWorkflow', async () => {
     const { handleMainMenu } = await loadInteractiveModule()
     let call = 0
@@ -369,15 +401,19 @@ describe('handleMainMenu', () => {
     const config = createConfig()
     await handleMainMenu(config, createCliArgs())
 
-    assert.equal(getCachedSearchResultsMock.mock.calls.length, 1)
-    assert.equal(localizeDivisionHierarchiesForReleaseMock.mock.calls.length, 1)
+    assert.equal(getCachedSearchResultsMock.mock.calls.length, 0)
+    assert.equal(getDivisionsByIdsMock.mock.calls.length, 1)
+    assert.equal(cacheDivisionMock.mock.calls.length, 1)
     assert.equal(promptForDivisionSelectionMock.mock.calls.length, 1)
     assert.equal(config.divisionId, 'division-1')
     assert.equal(config.selectedDivision?.id, 'division-1')
     assert.deepEqual(resolveOptionsMock.mock.calls[0], [
       config,
       createCliArgs(),
-      { releaseVersion: null },
+      {
+        releaseVersion: null,
+        selectedDivision: createDivision('division-1'),
+      },
     ])
     assert.equal(executeDownloadWorkflowMock.mock.calls.length, 1)
   })
@@ -427,9 +463,38 @@ describe('handleMainMenu', () => {
         selectedDivision: createDivision('division-1'),
       }),
       createCliArgs(),
-      { releaseVersion: null },
+      {
+        releaseVersion: null,
+        selectedDivision: createDivision('division-1'),
+      },
     ])
     assert.equal(persistAndDisplayDivisionInfoMock.mock.calls.length, 1)
+  })
+
+  test('falls back to the cache file when the selected history item does not include results', async () => {
+    const { handleMainMenu } = await loadInteractiveModule()
+    let call = 0
+    promptForMainActionMock.mockImplementation(async () => {
+      call += 1
+      return call === 1 ? 'download_data' : null
+    })
+    promptForDownloadActionMock.mockImplementation(async () => 'search_area')
+    promptForAreaSearchActionMock.mockImplementation(async () => 'repeat_search')
+    promptForSearchHistoryMock.mockImplementationOnce(async () => ({
+      version: '2026-03-18.0',
+      adminLevel: 2,
+      term: 'central',
+      totalCount: 0,
+      results: [],
+      createdAt: '2026-04-06T00:00:00.000Z',
+    }))
+    getCachedDivisionMock.mockImplementation(async () => createDivision('division-1'))
+
+    await handleMainMenu(createConfig(), createCliArgs())
+
+    assert.equal(getCachedSearchResultsMock.mock.calls.length, 1)
+    assert.equal(getDivisionsByIdsMock.mock.calls.length, 0)
+    assert.equal(cacheDivisionMock.mock.calls.length, 0)
   })
 
   test('dispatches settings actions through the lazily imported settings module', async () => {

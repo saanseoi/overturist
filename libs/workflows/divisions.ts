@@ -271,28 +271,56 @@ async function getCachedDivisionOrLoad(
   releaseVersion: Version,
   locale: string,
 ): Promise<Division> {
-  const cachedDivision = await getCachedDivision(releaseVersion, divisionId)
+  const s = spinner()
+  const startedAt = Date.now()
+  s.start(
+    `Searching for the division matching the Overture Division Id (${kleur.gray('takes several minutes')})`,
+  )
 
-  if (cachedDivision) {
-    // Cached divisions still need hierarchy localization for the active locale.
-    const [localizedDivision] = await localizeDivisionHierarchiesForRelease(
+  try {
+    const cachedDivision = await getCachedDivision(releaseVersion, divisionId)
+
+    if (cachedDivision) {
+      // Cached divisions still need hierarchy localization for the active locale.
+      const [localizedDivision] = await localizeDivisionHierarchiesForRelease(
+        releaseVersion,
+        [cachedDivision],
+        locale,
+      )
+
+      s.stop(
+        `Found ${kleur.green(1)} matching division ${kleur.gray(`(${formatElapsedTime(Date.now() - startedAt)})`)}`,
+      )
+      return localizedDivision
+    }
+
+    const divisions = await getDivisionsByIds(
       releaseVersion,
-      [cachedDivision],
+      [divisionId],
+      true,
       locale,
     )
 
-    return localizedDivision
-  }
+    if (!divisions || divisions.length === 0) {
+      s.stop(
+        `No divisions found ${kleur.gray(`(${formatElapsedTime(Date.now() - startedAt)})`)}`,
+      )
+      bail(
+        `Division ${kleur.yellow(divisionId)} not found in release "${kleur.cyan(releaseVersion)}"`,
+      )
+    }
 
-  const divisions = await getDivisionsByIds(releaseVersion, [divisionId], true, locale)
-
-  if (!divisions || divisions.length === 0) {
-    bail(
-      `Division ${kleur.yellow(divisionId)} not found in release "${kleur.cyan(releaseVersion)}"`,
+    s.stop(
+      `Found ${kleur.green(1)} matching division ${kleur.gray(`(${formatElapsedTime(Date.now() - startedAt)})`)}`,
+    )
+    return divisions[0]
+  } catch (error) {
+    bailFromSpinner(
+      s,
+      'Division lookup failed',
+      `Failed to search for divisions: ${error instanceof Error ? error.message : 'Unknown error'}`,
     )
   }
-
-  return divisions[0]
 }
 
 /**

@@ -652,7 +652,7 @@ export async function getFeaturesForBbox(
   try {
     progressCallback?.({
       stage: 'bbox',
-      message: `${kleur.white('Obtaining all')} ${kleur.magenta(featureType)} ${kleur.white('within the')} ${kleur.cyan('bbox')}`,
+      message: `${kleur.white('Obtaining every')} ${kleur.magenta(featureType)} ${kleur.white('feature within the')} ${kleur.cyan('bbox')}`,
     })
 
     const result = await runDuckDBQuery(bboxQuery, {

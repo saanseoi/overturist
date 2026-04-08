@@ -268,6 +268,12 @@ describe('initializeDivision', () => {
       true,
       'en',
     ])
+    assert.equal(spinnerState.start.mock.calls.length, 1)
+    assert.match(
+      String(spinnerState.start.mock.calls[0]?.[0] ?? ''),
+      /Searching for the division matching the Overture Division Id/,
+    )
+    assert.match(String(spinnerState.stop.mock.calls[0]?.[0] ?? ''), /4200ms/)
   })
 
   test('resolves a CLI OSM relation id through source-record lookup', async () => {
@@ -312,6 +318,12 @@ describe('initializeDivision', () => {
 
     assert.equal(result.divisionId, 'division-from-id')
     assert.equal(getDivisionsByIdsMock.mock.calls.length, 1)
+    assert.equal(spinnerState.start.mock.calls.length, 1)
+    assert.match(
+      String(spinnerState.start.mock.calls[0]?.[0] ?? ''),
+      /Searching for the division matching the Overture Division Id/,
+    )
+    assert.match(String(spinnerState.stop.mock.calls[0]?.[0] ?? ''), /4200ms/)
   })
 
   test('bails in non-interactive mode when no division id is available', async () => {

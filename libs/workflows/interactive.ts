@@ -1,7 +1,9 @@
 import { outro } from '@clack/prompts'
 import kleur from 'kleur'
 import { note } from '../core/note'
+import { bail } from '../core/utils'
 import {
+  cacheDivision,
   getCachedDivision,
   getCachedSearchResults,
   getVersionsInCache,
@@ -14,8 +16,14 @@ import {
   resolveDivisionInfoContext,
 } from './info'
 import { initializeLocale } from '../core/config'
-import { localizeDivisionHierarchiesForRelease } from '../data/queries'
-import type { CliArgs, Config, Division, InteractiveOptions } from '../core/types'
+import { getDivisionsByIds } from '../data/queries'
+import type {
+  CliArgs,
+  Config,
+  Division,
+  InteractiveOptions,
+  SearchHistoryItem,
+} from '../core/types'
 import {
   displayBanner,
   promptForAreaSearchAction,
@@ -245,28 +253,16 @@ async function handleRepeatSearchWorkflow(
     return // User cancelled or no history available
   }
 
-  // Load the search results from cache file
-  const cachedResults = await getCachedSearchResults(
-    searchItem.version,
-    searchItem.adminLevel,
-    searchItem.term,
-  )
+  const cachedResults = await resolveRepeatSearchResults(searchItem)
 
   if (!cachedResults) {
     console.error(kleur.red('Could not load cached search results'))
     return
   }
 
-  const { locale } = initializeLocale(config, cliArgs)
-  const localizedResults = await localizeDivisionHierarchiesForRelease(
-    searchItem.version,
-    cachedResults.results,
-    locale,
-  )
-
   // Prompt for division selection
   const division = await promptForDivisionSelection({
-    results: localizedResults,
+    results: cachedResults.results,
     totalCount: cachedResults.totalCount,
   })
 
@@ -274,22 +270,100 @@ async function handleRepeatSearchWorkflow(
     return // User cancelled
   }
 
+  const resolvedDivision = await refreshRepeatSearchDivisionIfNeeded(
+    searchItem.version,
+    division,
+    config,
+    cliArgs,
+  )
+
   // Set the division ID and selected division in config
-  config.divisionId = division.id
-  config.selectedDivision = division
+  config.divisionId = resolvedDivision.id
+  config.selectedDivision = resolvedDivision
 
   if (mode === 'info') {
-    await handleDivisionInfoSelection(config, cliArgs)
+    await handleDivisionInfoSelection(config, cliArgs, resolvedDivision)
     return
   }
 
   // Use the common initialization and download workflow
-  const initResult = await resolveOptions(config, cliArgs, { releaseVersion: null })
+  const initResult = await resolveOptions(config, cliArgs, {
+    releaseVersion: null,
+    selectedDivision: resolvedDivision,
+  })
   if (!initResult) {
     return
   }
 
   await executeDownloadWorkflow(initResult)
+}
+
+/**
+ * Resolves cached repeat-search results from the selected history entry.
+ * @param searchItem - Selected search-history entry
+ * @returns Cached search results ready for the selection prompt, or null when unavailable
+ */
+async function resolveRepeatSearchResults(
+  searchItem: SearchHistoryItem,
+): Promise<Pick<SearchHistoryItem, 'results' | 'totalCount'> | null> {
+  if (searchItem.results.length > 0) {
+    return {
+      results: searchItem.results,
+      totalCount: searchItem.totalCount,
+    }
+  }
+
+  return await getCachedSearchResults(
+    searchItem.version,
+    searchItem.adminLevel,
+    searchItem.term,
+  )
+}
+
+/**
+ * Ensures the selected repeat-search division is present in the division cache.
+ * @param releaseVersion - Release version associated with the cached search
+ * @param division - Division selected from the cached search results
+ * @param config - Environment-backed configuration object
+ * @param cliArgs - Parsed command-line arguments
+ * @returns Division ready for downstream workflows
+ */
+async function refreshRepeatSearchDivisionIfNeeded(
+  releaseVersion: string,
+  division: Division,
+  config: Config,
+  cliArgs: CliArgs,
+): Promise<Division> {
+  const cachedDivision = await getCachedDivision(releaseVersion, division.id)
+
+  if (cachedDivision) {
+    return cachedDivision
+  }
+
+  note(
+    [
+      `${kleur.bold('Cached search:')} ${kleur.cyan(division.names?.primary || division.id)}`,
+      `${kleur.bold('Status:')} ${kleur.yellow('Division details were missing from the local cache')}`,
+      `${kleur.bold('Action:')} ${kleur.gray('Re-downloading the division now')}`,
+    ].join('\n'),
+    'Repeat Search',
+  )
+
+  const { locale } = initializeLocale(config, cliArgs)
+  const refreshedDivisions = await getDivisionsByIds(
+    releaseVersion,
+    [division.id],
+    true,
+    locale,
+  )
+  const refreshedDivision = refreshedDivisions[0]
+
+  if (!refreshedDivision) {
+    return division
+  }
+
+  await cacheDivision(releaseVersion, refreshedDivision.id, refreshedDivision)
+  return refreshedDivision
 }
 
 /**
@@ -303,9 +377,11 @@ async function handleRepeatSearchWorkflow(
 async function handleDivisionInfoSelection(
   config: Config,
   cliArgs: CliArgs,
+  division: Division,
 ): Promise<void> {
   const ctx = await resolveDivisionInfoContext(config, cliArgs, {
     releaseVersion: null,
+    selectedDivision: division,
   })
   await persistAndDisplayDivisionInfo(ctx)
 }
@@ -365,8 +441,18 @@ async function getPresetDownloadTarget(
     return { target: 'division' }
   }
 
-  if (cliArgs.bboxRequested || cliArgs.bbox) {
+  if (cliArgs.bbox) {
     return { target: 'bbox' }
+  }
+
+  if (cliArgs.bboxRequested) {
+    if (config.bbox) {
+      return { target: 'bbox' }
+    }
+
+    bail(
+      'The --bbox flag requires bbox coordinates or BBOX_XMIN/BBOX_YMIN/BBOX_XMAX/BBOX_YMAX in .env',
+    )
   }
 
   if (config.target === 'world') {
@@ -402,10 +488,12 @@ async function displayPresetDownloadHeader(
   }
 
   if (interactiveOpts.target === 'bbox') {
+    const bboxSource = cliArgs.bbox ? 'CLI' : config.bbox ? 'Config' : 'Unknown'
+
     note(
       [
         `${kleur.bold('Target:')} ${kleur.cyan('Bounding box')}`,
-        `${kleur.bold('Source:')} ${kleur.gray(cliArgs.bbox ? 'CLI' : 'Config')}`,
+        `${kleur.bold('Source:')} ${kleur.gray(bboxSource)}`,
       ].join('\n'),
       'Download Data',
     )
