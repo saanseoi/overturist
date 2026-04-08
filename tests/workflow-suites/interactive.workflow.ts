@@ -30,6 +30,7 @@ const getCachedSearchResultsMock = mock(
 )
 const getCachedDivisionMock = mock(async () => null as Division | null)
 const getVersionsInCacheMock = mock(async () => [] as string[])
+const warmReleaseCacheForInteractiveStartupMock = mock(async () => {})
 const executeDownloadWorkflowMock = mock(async () => {})
 const resolveOptionsMock = mock(async () => createControlContext())
 const infoCmdMock = mock(async () => {})
@@ -99,6 +100,12 @@ async function loadInteractiveModule() {
     getCachedDivision: getCachedDivisionMock,
     getCachedSearchResults: getCachedSearchResultsMock,
     getVersionsInCache: getVersionsInCacheMock,
+  }))
+  mock.module(abs('../../libs/data/releases.ts'), () => ({
+    warmReleaseCacheForInteractiveStartup: warmReleaseCacheForInteractiveStartupMock,
+  }))
+  mock.module(abs('../../libs/data/releases'), () => ({
+    warmReleaseCacheForInteractiveStartup: warmReleaseCacheForInteractiveStartupMock,
   }))
   mock.module(abs('../../libs/workflows/get.ts'), () => ({
     executeDownloadWorkflow: executeDownloadWorkflowMock,
@@ -229,6 +236,7 @@ beforeEach(() => {
   getCachedSearchResultsMock.mockClear()
   getCachedDivisionMock.mockClear()
   getVersionsInCacheMock.mockClear()
+  warmReleaseCacheForInteractiveStartupMock.mockClear()
   executeDownloadWorkflowMock.mockClear()
   resolveOptionsMock.mockClear()
   infoCmdMock.mockClear()
@@ -260,6 +268,7 @@ beforeEach(() => {
   }))
   getCachedDivisionMock.mockImplementation(async () => null)
   getVersionsInCacheMock.mockImplementation(async () => [])
+  warmReleaseCacheForInteractiveStartupMock.mockImplementation(async () => {})
   executeDownloadWorkflowMock.mockImplementation(async () => {})
   resolveOptionsMock.mockImplementation(async () => createControlContext())
   infoCmdMock.mockImplementation(async () => {})
@@ -368,10 +377,7 @@ describe('handleMainMenu', () => {
     assert.deepEqual(resolveOptionsMock.mock.calls[0], [
       config,
       createCliArgs(),
-      {
-        releaseVersion: '2026-03-18.0',
-        selectedDivision: createDivision('division-1'),
-      },
+      { releaseVersion: null },
     ])
     assert.equal(executeDownloadWorkflowMock.mock.calls.length, 1)
   })
@@ -421,10 +427,7 @@ describe('handleMainMenu', () => {
         selectedDivision: createDivision('division-1'),
       }),
       createCliArgs(),
-      {
-        releaseVersion: '2026-03-18.0',
-        selectedDivision: createDivision('division-1'),
-      },
+      { releaseVersion: null },
     ])
     assert.equal(persistAndDisplayDivisionInfoMock.mock.calls.length, 1)
   })

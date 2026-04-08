@@ -59,6 +59,16 @@ describe('parseNaturalDateToISO', () => {
   })
 })
 
+describe('formatElapsedTime', () => {
+  test('formats millisecond, second, and minute durations for CLI messages', async () => {
+    const { formatElapsedTime } = await loadUtilsModule()
+
+    assert.equal(formatElapsedTime(842), '842ms')
+    assert.equal(formatElapsedTime(4_200), '4.2s')
+    assert.equal(formatElapsedTime(123_000), '2m 03s')
+  })
+})
+
 describe('termination helpers', () => {
   test('successExit exits with code 0 and prints a success outro when a message is provided', () => {
     const result = runInlineBun(

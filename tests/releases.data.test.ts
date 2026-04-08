@@ -206,6 +206,42 @@ describe('initializeReleaseVersion', () => {
     assert.equal(selectReleaseVersionMock.mock.calls.length, 1)
   })
 
+  test('reuses cached release data for interactive initialization without blocking on refresh', async () => {
+    const { initializeReleaseVersion } = await loadReleasesModule()
+    getCachedReleasesMock.mockImplementation(async () => ({
+      lastUpdated: '2026-04-06T00:00:00.000Z',
+      lastChecked: '2026-04-07T00:00:00.000Z',
+      source: 'cache',
+      latest: '2026-03-18.0',
+      totalReleases: 2,
+      releases: [
+        {
+          version: '2026-03-18.0',
+          date: '2026-03-18',
+          schema: '2',
+          isReleased: true,
+          isAvailableOnS3: true,
+        },
+        {
+          version: '2025-12-22.0',
+          date: '2025-12-22',
+          schema: '1',
+          isReleased: true,
+          isAvailableOnS3: true,
+        },
+      ],
+    }))
+
+    const result = await initializeReleaseVersion(createConfig(), createCliArgs(), {
+      releaseVersion: null,
+    } satisfies InteractiveOptions)
+
+    assert.equal(result.releaseVersion, '2025-12-22.0')
+    assert.equal(getS3ReleasesMock.mock.calls.length, 0)
+    assert.equal(scrapeReleaseCalendarMock.mock.calls.length, 0)
+    assert.equal(selectReleaseVersionMock.mock.calls.length, 1)
+  })
+
   test('rejects selected versions that are not available on S3', async () => {
     const { initializeReleaseVersion } = await loadReleasesModule()
 
@@ -379,6 +415,58 @@ describe('initializeReleaseVersion', () => {
         isAvailableOnS3: false,
       },
     )
+  })
+})
+
+describe('warmReleaseCacheForInteractiveStartup', () => {
+  test('starts a refresh when the cached latest release is at least 21 days old and last check is stale', async () => {
+    const { warmReleaseCacheForInteractiveStartup } = await loadReleasesModule()
+    getCachedReleasesMock.mockImplementation(async () => ({
+      lastUpdated: '2026-02-18T00:00:00.000Z',
+      lastChecked: '2026-04-07T00:00:00.000Z',
+      source: 'cache',
+      latest: '2026-02-18.0',
+      totalReleases: 1,
+      releases: [
+        {
+          version: '2026-02-18.0',
+          date: '2026-02-18',
+          schema: '2',
+          isReleased: true,
+          isAvailableOnS3: true,
+        },
+      ],
+    }))
+
+    await warmReleaseCacheForInteractiveStartup(createConfig())
+    await Promise.resolve()
+
+    assert.equal(getS3ReleasesMock.mock.calls.length, 1)
+  })
+
+  test('skips startup refresh when the latest release is not yet 21 days old', async () => {
+    const { warmReleaseCacheForInteractiveStartup } = await loadReleasesModule()
+    getCachedReleasesMock.mockImplementation(async () => ({
+      lastUpdated: '2026-04-06T00:00:00.000Z',
+      lastChecked: '2026-04-08T12:00:00.000Z',
+      source: 'cache',
+      latest: '2026-03-25.0',
+      totalReleases: 1,
+      releases: [
+        {
+          version: '2026-03-25.0',
+          date: '2026-03-25',
+          schema: '2',
+          isReleased: true,
+          isAvailableOnS3: true,
+        },
+      ],
+    }))
+
+    await warmReleaseCacheForInteractiveStartup(createConfig())
+    await Promise.resolve()
+
+    assert.equal(getS3ReleasesMock.mock.calls.length, 0)
   })
 })
 

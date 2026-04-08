@@ -26,7 +26,7 @@ import {
   promptForDivisionSelection,
   promptForOsmRelationId,
 } from '../ui'
-import { bail, bailFromSpinner } from '../core/utils'
+import { bail, bailFromSpinner, formatElapsedTime } from '../core/utils'
 
 const ANY_ADMIN_LEVEL = 99
 
@@ -199,7 +199,7 @@ export async function handleOsmDivisionSelection(
     queryString,
     subtypes: [],
     adminLevel: ANY_ADMIN_LEVEL,
-    loadingMessage: `Resolving OSM relation (${kleur.gray('takes several minutes')})`,
+    loadingMessage: `Searching for the division matching the OSM Relation Id (${kleur.gray('takes several minutes')})`,
     noResultsMessage: `No division found for OSM relation "${kleur.red(queryString)}"`,
   })
 }
@@ -220,6 +220,7 @@ async function selectDivisionFromSearch(params: {
 }): Promise<DivisionSelectionResult> {
   const { releaseVersion, locale, queryString, subtypes, adminLevel } = params
   const s = spinner()
+  const startedAt = Date.now()
   s.start(params.loadingMessage)
 
   try {
@@ -232,12 +233,14 @@ async function selectDivisionFromSearch(params: {
     )
 
     if (searchResult.results.length === 0) {
-      s.stop('No divisions found')
+      s.stop(
+        `No divisions found ${kleur.gray(`(${formatElapsedTime(Date.now() - startedAt)})`)}`,
+      )
       bail(params.noResultsMessage)
     }
 
     s.stop(
-      `Found ${kleur.green(searchResult.totalCount)} matching division${searchResult.totalCount > 1 ? 's' : ''}`,
+      `Found ${kleur.green(searchResult.totalCount)} matching division${searchResult.totalCount > 1 ? 's' : ''} ${kleur.gray(`(${formatElapsedTime(Date.now() - startedAt)})`)}`,
     )
 
     const selectedDivision = await promptForDivisionSelection(searchResult)
@@ -310,30 +313,55 @@ async function getDivisionByOsmId(
     bail(`Invalid OSM relation id: ${kleur.yellow(osmId)}`)
   }
 
-  // OSM relation lookups are resolved directly because the input id is not the cache key.
-  const divisions = await getDivisionsBySourceRecordId(
-    releaseVersion,
-    sourceRecordIdPattern,
-    [],
-    locale,
+  const s = spinner()
+  const startedAt = Date.now()
+  s.start(
+    `Searching for the division matching the OSM Relation Id (${kleur.gray('takes several minutes')})`,
   )
 
-  if (divisions.length === 0) {
-    bail(
-      `Division source ${kleur.yellow(osmId)} not found in release "${kleur.cyan(releaseVersion)}"`,
+  // OSM relation lookups are resolved directly because the input id is not the cache key.
+  try {
+    const divisions = await getDivisionsBySourceRecordId(
+      releaseVersion,
+      sourceRecordIdPattern,
+      [],
+      locale,
+    )
+
+    if (divisions.length === 0) {
+      s.stop(
+        `No divisions found ${kleur.gray(`(${formatElapsedTime(Date.now() - startedAt)})`)}`,
+      )
+      bail(
+        `Division source ${kleur.yellow(osmId)} not found in release "${kleur.cyan(releaseVersion)}"`,
+      )
+    }
+
+    if (divisions.length > 1) {
+      s.stop(
+        `Found ${kleur.green(divisions.length)} matching divisions ${kleur.gray(`(${formatElapsedTime(Date.now() - startedAt)})`)}`,
+      )
+
+      const divisionSummary = divisions
+        .slice(0, 5)
+        .map(division => division.names?.primary || division.id)
+        .join(', ')
+
+      bail(
+        `Division source ${kleur.yellow(osmId)} matched multiple divisions: ${kleur.cyan(divisionSummary)}`,
+      )
+    }
+
+    s.stop(
+      `Found ${kleur.green(1)} matching division ${kleur.gray(`(${formatElapsedTime(Date.now() - startedAt)})`)}`,
+    )
+
+    return divisions[0]
+  } catch (error) {
+    bailFromSpinner(
+      s,
+      'OSM relation lookup failed',
+      `Failed to search for divisions: ${error instanceof Error ? error.message : 'Unknown error'}`,
     )
   }
-
-  if (divisions.length > 1) {
-    const divisionSummary = divisions
-      .slice(0, 5)
-      .map(division => division.names?.primary || division.id)
-      .join(', ')
-
-    bail(
-      `Division source ${kleur.yellow(osmId)} matched multiple divisions: ${kleur.cyan(divisionSummary)}`,
-    )
-  }
-
-  return divisions[0]
 }

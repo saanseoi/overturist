@@ -16,6 +16,10 @@ import { selectReleaseVersion } from '../ui'
 import { bail, bailFromSpinner, successExit } from '../core/utils'
 import { scrapeReleaseCalendar } from './web'
 
+const RELEASE_REFRESH_START_DAYS = 21
+const RELEASE_REFRESH_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000
+let releaseRefreshPromise: Promise<ReleaseData> | null = null
+
 /**
  * Initializes release version by fetching latest versions and determining which version to use.
  * @param config - Initial configuration object
@@ -36,7 +40,7 @@ export async function initializeReleaseVersion(
   const s = spinner()
   s.start('Resolving versions')
 
-  const releaseData = await fetchLatestVersions(config)
+  const releaseData = await getReleaseDataForInitialization(config, interactiveOpts)
 
   // Count the number of releases available on S3
   const availableOnS3Count = releaseData.releases.filter(
@@ -104,6 +108,27 @@ export async function initializeReleaseVersion(
   }
 
   return { releaseVersion, releaseData, releaseContext }
+}
+
+/**
+ * Starts a background release-cache refresh for interactive startup when the cached
+ * release cadence suggests a new version may be imminent.
+ * @param config - Initial configuration object
+ * @returns Promise resolving when the warm-up attempt has been scheduled or completed
+ */
+export async function warmReleaseCacheForInteractiveStartup(
+  config: Config,
+): Promise<void> {
+  const cachedReleaseData = await getCachedReleases()
+
+  if (!shouldWarmReleaseCache(cachedReleaseData)) {
+    return
+  }
+
+  // Share the same in-flight refresh so startup warm-up and later foreground resolution do not duplicate work.
+  void getFreshReleaseData(config).catch(() => {
+    // Keep startup warm-up silent. Interactive flows can still fall back to cached data or retry later.
+  })
 }
 
 /**
@@ -206,6 +231,40 @@ async function fetchLatestVersions(config: Config): Promise<ReleaseData> {
 }
 
 /**
+ * Resolves release metadata for a workflow initialization.
+ * @param config - Initial configuration object
+ * @param interactiveOpts - Interactive options (`false` = non-interactive)
+ * @returns Release data for the current workflow
+ */
+async function getReleaseDataForInitialization(
+  config: Config,
+  interactiveOpts?: InteractiveOptions | false,
+): Promise<ReleaseData> {
+  const cachedReleaseData = await getCachedReleases()
+
+  if (interactiveOpts && cachedReleaseData) {
+    return cachedReleaseData
+  }
+
+  return await getFreshReleaseData(config)
+}
+
+/**
+ * Returns fresh release metadata, reusing any in-flight refresh to avoid duplicate network work.
+ * @param config - Initial configuration object
+ * @returns Fresh release data merged from cache, S3, and release-calendar sources
+ */
+async function getFreshReleaseData(config: Config): Promise<ReleaseData> {
+  if (!releaseRefreshPromise) {
+    releaseRefreshPromise = fetchLatestVersions(config).finally(() => {
+      releaseRefreshPromise = null
+    })
+  }
+
+  return await releaseRefreshPromise
+}
+
+/**
  * Loads existing releases data from cache if available.
  * @returns Promise resolving to Partial<ReleaseData> with existing releases or empty data
  */
@@ -228,6 +287,43 @@ function createEmptyData(): ReleaseData {
     totalReleases: 0,
     releases: [],
   }
+}
+
+/**
+ * Determines whether interactive startup should begin warming the release cache.
+ * @param cachedReleaseData - Cached release metadata, if present
+ * @param now - Current timestamp used for threshold comparisons
+ * @returns True when a background refresh should be started
+ */
+function shouldWarmReleaseCache(
+  cachedReleaseData: ReleaseData | null,
+  now: Date = new Date(),
+): boolean {
+  if (!cachedReleaseData) {
+    return true
+  }
+
+  const latestRelease = findRelease(cachedReleaseData, cachedReleaseData.latest)
+  const latestReleaseDate = latestRelease
+    ? new Date(`${latestRelease.date}T00:00:00Z`)
+    : null
+  const lastCheckedAt = new Date(cachedReleaseData.lastChecked)
+
+  if (
+    !latestReleaseDate ||
+    Number.isNaN(latestReleaseDate.getTime()) ||
+    Number.isNaN(lastCheckedAt.getTime())
+  ) {
+    return true
+  }
+
+  const latestReleaseAgeMs = now.getTime() - latestReleaseDate.getTime()
+  const lastCheckedAgeMs = now.getTime() - lastCheckedAt.getTime()
+
+  return (
+    latestReleaseAgeMs >= RELEASE_REFRESH_START_DAYS * 24 * 60 * 60 * 1000 &&
+    lastCheckedAgeMs >= RELEASE_REFRESH_CHECK_INTERVAL_MS
+  )
 }
 
 /**

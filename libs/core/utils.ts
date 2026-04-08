@@ -57,6 +57,27 @@ export function parseNaturalDateToISO(dateText: string): string | null {
 }
 
 /**
+ * Formats an elapsed duration in milliseconds for concise CLI status messages.
+ * @param elapsedMs - Elapsed duration in milliseconds
+ * @returns Human-readable duration such as `842ms`, `4.2s`, or `2m 03s`
+ */
+export function formatElapsedTime(elapsedMs: number): string {
+  if (elapsedMs < 1000) {
+    return `${elapsedMs}ms`
+  }
+
+  if (elapsedMs < 60_000) {
+    return `${(elapsedMs / 1000).toFixed(1)}s`
+  }
+
+  const totalSeconds = Math.round(elapsedMs / 1000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+
+  return `${minutes}m ${String(seconds).padStart(2, '0')}s`
+}
+
+/**
  * TERMINATION
  */
 

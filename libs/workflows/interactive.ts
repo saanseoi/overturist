@@ -6,6 +6,7 @@ import {
   getCachedSearchResults,
   getVersionsInCache,
 } from '../data/cache'
+import { warmReleaseCacheForInteractiveStartup } from '../data/releases'
 import { executeDownloadWorkflow, resolveOptions } from './get'
 import {
   infoCmd,
@@ -33,6 +34,7 @@ import {
  * Runs the interactive mode with main menu loop
  */
 export async function handleMainMenu(CONFIG: Config, cliArgs: CliArgs) {
+  void warmReleaseCacheForInteractiveStartup(CONFIG)
   displayBanner()
 
   if (await handlePresetDownloadFlow(CONFIG, cliArgs)) {
@@ -87,7 +89,7 @@ async function handleDivisionInfoMenu(config: Config, cliArgs: CliArgs): Promise
 
     switch (action) {
       case 'new_search': {
-        await infoCmd(config, cliArgs)
+        await infoCmd(config, cliArgs, { releaseVersion: null })
         return
       }
 
@@ -277,15 +279,12 @@ async function handleRepeatSearchWorkflow(
   config.selectedDivision = division
 
   if (mode === 'info') {
-    await handleDivisionInfoSelection(config, cliArgs, division, searchItem.version)
+    await handleDivisionInfoSelection(config, cliArgs)
     return
   }
 
   // Use the common initialization and download workflow
-  const initResult = await resolveOptions(config, cliArgs, {
-    releaseVersion: searchItem.version,
-    selectedDivision: division,
-  })
+  const initResult = await resolveOptions(config, cliArgs, { releaseVersion: null })
   if (!initResult) {
     return
   }
@@ -304,12 +303,9 @@ async function handleRepeatSearchWorkflow(
 async function handleDivisionInfoSelection(
   config: Config,
   cliArgs: CliArgs,
-  division: Division,
-  releaseVersion: string,
 ): Promise<void> {
   const ctx = await resolveDivisionInfoContext(config, cliArgs, {
-    releaseVersion,
-    selectedDivision: division,
+    releaseVersion: null,
   })
   await persistAndDisplayDivisionInfo(ctx)
 }

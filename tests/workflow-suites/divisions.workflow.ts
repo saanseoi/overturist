@@ -36,11 +36,13 @@ const bailFromSpinnerMock = mock(
     throw new Error(msg ?? 'bail')
   },
 )
+const formatElapsedTimeMock = mock((elapsedMs: number) => `${elapsedMs}ms`)
 const spinnerState = {
   start: mock(() => {}),
   stop: mock(() => {}),
   message: mock(() => {}),
 }
+const originalDateNow = Date.now
 
 async function loadDivisionsModule() {
   mock.module('@clack/prompts', () => ({
@@ -74,10 +76,12 @@ async function loadDivisionsModule() {
   mock.module(abs('../../libs/core/utils.ts'), () => ({
     bail: bailMock,
     bailFromSpinner: bailFromSpinnerMock,
+    formatElapsedTime: formatElapsedTimeMock,
   }))
   mock.module(abs('../../libs/core/utils'), () => ({
     bail: bailMock,
     bailFromSpinner: bailFromSpinnerMock,
+    formatElapsedTime: formatElapsedTimeMock,
   }))
 
   return await import(`../../libs/workflows/divisions.ts`)
@@ -113,6 +117,12 @@ function createCliArgs(overrides: Partial<CliArgs> = {}): CliArgs {
 }
 
 beforeEach(() => {
+  let now = 1_000
+  Date.now = () => {
+    now += 4_200
+    return now
+  }
+
   getCachedDivisionMock.mockClear()
   getAdminLevelsMock.mockClear()
   getDivisionsByIdsMock.mockClear()
@@ -127,6 +137,7 @@ beforeEach(() => {
   promptForOsmRelationIdMock.mockClear()
   bailMock.mockClear()
   bailFromSpinnerMock.mockClear()
+  formatElapsedTimeMock.mockClear()
   spinnerState.start.mockClear()
   spinnerState.stop.mockClear()
   spinnerState.message.mockClear()
@@ -168,9 +179,11 @@ beforeEach(() => {
       throw new Error(msg ?? 'bail')
     },
   )
+  formatElapsedTimeMock.mockImplementation((elapsedMs: number) => `${elapsedMs}ms`)
 })
 
 afterEach(() => {
+  Date.now = originalDateNow
   mock.restore()
 })
 
@@ -278,6 +291,12 @@ describe('initializeDivision', () => {
       [],
       'en',
     ])
+    assert.equal(spinnerState.start.mock.calls.length, 1)
+    assert.match(
+      String(spinnerState.start.mock.calls[0]?.[0] ?? ''),
+      /Searching for the division matching the OSM Relation Id/,
+    )
+    assert.match(String(spinnerState.stop.mock.calls[0]?.[0] ?? ''), /4200ms/)
   })
 
   test('uses the configured division id when CLI input is absent', async () => {
@@ -395,6 +414,7 @@ describe('interactive selection flows', () => {
     assert.equal(result.divisionId, 'division-search-result')
     assert.equal(promptForDivisionSelectionMock.mock.calls.length, 1)
     assert.equal(displaySelectedDivisionMock.mock.calls.length, 1)
+    assert.match(String(spinnerState.stop.mock.calls[0]?.[0] ?? ''), /4200ms/)
   })
 
   test('searches all subtypes when the user selects the any-level option', async () => {
@@ -443,5 +463,10 @@ describe('interactive selection flows', () => {
       'en',
     ])
     assert.equal(promptForOsmRelationIdMock.mock.calls.length, 1)
+    assert.match(
+      String(spinnerState.start.mock.calls[0]?.[0] ?? ''),
+      /Searching for the division matching the OSM Relation Id/,
+    )
+    assert.match(String(spinnerState.stop.mock.calls[0]?.[0] ?? ''), /4200ms/)
   })
 })
