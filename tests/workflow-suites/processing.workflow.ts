@@ -42,10 +42,23 @@ const getDivisionsBySourceRecordIdMock = mock(async () => [] as Division[])
 const getFeaturesForSpatialWithConnectionMock = mock(async () => ({
   success: true,
   bboxCount: 2,
+  bboxHasArea: true,
+  bboxAreaKm2: 5.5,
   finalCount: 4,
+  finalHasArea: true,
+  finalAreaKm2: 7.5,
 }))
-const getFeaturesForWorldMock = mock(async () => ({ success: true, count: 7 }))
-const getLastReleaseCountMock = mock(async () => 2 as number | null)
+const getFeaturesForWorldMock = mock(async () => ({
+  success: true,
+  count: 7,
+  hasArea: true,
+  areaKm2: 9.5,
+}))
+const getLastReleaseFeatureStatsMock = mock(async () => ({
+  count: 2,
+  hasArea: true,
+  areaKm2: 3.5,
+}))
 const localizeDivisionHierarchiesForReleaseMock = mock(
   async (_releaseVersion: string, divisions: Division[], _locale: string) => divisions,
 )
@@ -122,7 +135,7 @@ async function loadProcessingModule() {
     getDivisionsBySourceRecordId: getDivisionsBySourceRecordIdMock,
     getFeaturesForSpatialWithConnection: getFeaturesForSpatialWithConnectionMock,
     getFeaturesForWorld: getFeaturesForWorldMock,
-    getLastReleaseCount: getLastReleaseCountMock,
+    getLastReleaseFeatureStats: getLastReleaseFeatureStatsMock,
     localizeDivisionHierarchiesForRelease: localizeDivisionHierarchiesForReleaseMock,
     normalizeOsmRelationRecordId: normalizeOsmRelationRecordIdMock,
   }))
@@ -231,7 +244,7 @@ beforeEach(async () => {
   getDivisionsBySourceRecordIdMock.mockClear()
   getFeaturesForSpatialWithConnectionMock.mockClear()
   getFeaturesForWorldMock.mockClear()
-  getLastReleaseCountMock.mockClear()
+  getLastReleaseFeatureStatsMock.mockClear()
   localizeDivisionHierarchiesForReleaseMock.mockClear()
   normalizeOsmRelationRecordIdMock.mockClear()
   downloadParquetFilesMock.mockClear()
@@ -271,9 +284,14 @@ beforeEach(async () => {
       _outputPath: string,
       onProgress?: (update: ProgressUpdate) => void,
     ) => {
-      onProgress?.({ stage: 'bbox', count: 2 })
-      onProgress?.({ stage: 'geometry', count: 4 })
-      return { success: true, finalCount: 4 }
+      onProgress?.({ stage: 'bbox', count: 2, areaApplicable: true, areaKm2: 5.5 })
+      onProgress?.({
+        stage: 'geometry',
+        count: 4,
+        areaApplicable: true,
+        areaKm2: 7.5,
+      })
+      return { success: true, finalCount: 4, finalHasArea: true, finalAreaKm2: 7.5 }
     },
   )
   getFeaturesForWorldMock.mockImplementation(
@@ -284,11 +302,15 @@ beforeEach(async () => {
       _outputPath: string,
       onProgress?: (update?: ProgressUpdate) => void,
     ) => {
-      onProgress?.({ stage: 'bbox', count: 7 })
-      return { success: true, count: 7 }
+      onProgress?.({ stage: 'bbox', count: 7, areaApplicable: true, areaKm2: 9.5 })
+      return { success: true, count: 7, hasArea: true, areaKm2: 9.5 }
     },
   )
-  getLastReleaseCountMock.mockImplementation(async () => 2)
+  getLastReleaseFeatureStatsMock.mockImplementation(async () => ({
+    count: 2,
+    hasArea: true,
+    areaKm2: 3.5,
+  }))
   localizeDivisionHierarchiesForReleaseMock.mockImplementation(
     async (_releaseVersion: string, divisions: Division[], _locale: string) =>
       divisions,

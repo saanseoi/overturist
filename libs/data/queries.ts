@@ -9,6 +9,7 @@ import type {
   BBox,
   ControlContext,
   Division,
+  FeatureStats,
   GERS,
   ProgressUpdate,
   SpatialGeometryMode,
@@ -323,21 +324,73 @@ function normalizeDivisions(divisions: Division[]): Division[] {
 }
 
 /**
- * Counts rows from a parquet file using an existing DuckDB connection.
- * @param connection - Open DuckDB connection used for the surrounding workflow
- * @param filePath - Path to the parquet file to count
- * @returns Row count for the parquet file
+ * Builds the aggregate SQL used to derive count and polygon area from a parquet file.
+ * @param filePathExpression - SQL expression that resolves to the parquet file path
+ * @returns SQL query returning count, polygon row count, and total area in km²
  */
-async function getCountWithConnection(
+function buildFeatureStatsQuery(filePathExpression: string): string {
+  return `
+    SELECT
+      COUNT(*) AS count,
+      SUM(
+        CASE
+          WHEN geometry IS NOT NULL
+            AND ST_GeometryType(geometry) IN ('POLYGON', 'MULTIPOLYGON')
+          THEN 1
+          ELSE 0
+        END
+      ) AS polygon_count,
+      SUM(
+        CASE
+          WHEN geometry IS NOT NULL
+            AND ST_GeometryType(geometry) IN ('POLYGON', 'MULTIPOLYGON')
+          THEN ST_Area(ST_Transform(geometry, 'EPSG:4326', 'EPSG:6933')) / 1000000.0
+          ELSE 0
+        END
+      ) AS area_km2
+    FROM read_parquet(${filePathExpression});
+  `
+}
+
+/**
+ * Normalizes a raw DuckDB aggregate row into the shared feature-stats shape.
+ * @param stats - Row returned by the aggregate stats query
+ * @returns Parsed feature stats with area omitted for non-polygon datasets
+ */
+function normalizeFeatureStats(stats?: {
+  count?: number
+  polygon_count?: number
+  area_km2?: number
+}): FeatureStats {
+  const count = stats?.count ?? 0
+  const polygonCount = stats?.polygon_count ?? 0
+  const areaKm2 = stats?.area_km2 ?? 0
+
+  return {
+    count,
+    hasArea: polygonCount > 0,
+    areaKm2: polygonCount > 0 ? areaKm2 : null,
+  }
+}
+
+/**
+ * Reads aggregated feature stats from a parquet file using an existing DuckDB connection.
+ * @param connection - Open DuckDB connection used for the surrounding workflow
+ * @param filePath - Path to the parquet file to inspect
+ * @returns Count plus polygon area stats for the parquet file
+ */
+async function getFeatureStatsWithConnection(
   connection: DuckDBConnection,
   filePath: string,
-): Promise<number> {
-  const reader = await connection.runAndReadAll(
-    `SELECT COUNT(*) AS count FROM '${filePath}';`,
-  )
-  const result = reader.getRowObjectsJson() as Array<{ count: number }>
+): Promise<FeatureStats> {
+  const reader = await connection.runAndReadAll(buildFeatureStatsQuery(`'${filePath}'`))
+  const result = reader.getRowObjectsJson() as Array<{
+    count: number
+    polygon_count: number
+    area_km2: number
+  }>
 
-  return result[0]?.count ?? 0
+  return normalizeFeatureStats(result[0])
 }
 
 /**
@@ -358,16 +411,32 @@ export async function getCount(filePath: string): Promise<number> {
 }
 
 /**
- * Retrieves the feature count from the previous release output for diff reporting.
+ * Reads count plus polygon area stats from a parquet file.
+ * @param filePath - Path to the parquet file
+ * @returns Promise resolving to count plus polygon area stats
+ */
+export async function getFeatureStats(filePath: string): Promise<FeatureStats> {
+  const { stdout } = await runDuckDBQuery(buildFeatureStatsQuery(`'${filePath}'`))
+  const result = JSON.parse(stdout) as Array<{
+    count: number
+    polygon_count: number
+    area_km2: number
+  }>
+
+  return normalizeFeatureStats(result[0])
+}
+
+/**
+ * Retrieves the previous-release output stats for diff reporting.
  * @param ctx - Control context containing target, source, and release settings
  * @param featureType - The type of feature being processed (e.g., "address", "building")
- * @returns Count from the previous release output, or null when no comparable file is available
- * @remarks Missing files and query failures are treated as "no previous count" so diff reporting can continue.
+ * @returns Count plus polygon area stats from the previous release output, or null when no comparable file is available
+ * @remarks Missing files and query failures are treated as unavailable stats so diff reporting can continue.
  */
-export async function getLastReleaseCount(
+export async function getLastReleaseFeatureStats(
   ctx: ControlContext,
   featureType: string,
-): Promise<number | null> {
+): Promise<FeatureStats | null> {
   try {
     if (ctx.releaseContext.previousVersion) {
       const previousVersionOutputDir = getOutputDir(
@@ -397,7 +466,7 @@ export async function getLastReleaseCount(
             ctx.spatialGeometry,
           ),
         )
-        return await getCount(previousFile)
+        return await getFeatureStats(previousFile)
       }
     }
 
@@ -689,7 +758,12 @@ export async function getFeaturesForWorld(
   version: string,
   outputFile: string,
   progressCallback?: (update: ProgressUpdate) => void,
-): Promise<{ success: boolean; count: number }> {
+): Promise<{
+  success: boolean
+  count: number
+  hasArea: boolean
+  areaKm2: number | null
+}> {
   const s3Path = `s3://overturemaps-us-west-2/release/${version}/theme=${theme}/type=${featureType}/`
 
   const worldQuery = `
@@ -699,7 +773,7 @@ export async function getFeaturesForWorld(
             SELECT * FROM read_parquet('${s3Path}*.parquet')
         ) TO '${outputFile}' (FORMAT PARQUET, COMPRESSION 'ZSTD');
 
-        SELECT COUNT(*) as count FROM read_parquet('${outputFile}');
+        ${buildFeatureStatsQuery(`'${outputFile}'`)}
   `
 
   try {
@@ -713,17 +787,19 @@ export async function getFeaturesForWorld(
     })
 
     if (result.exitCode === 0 && result.stdout) {
-      const count = JSON.parse(result.stdout)[0].count
+      const stats = normalizeFeatureStats(JSON.parse(result.stdout)[0])
       progressCallback?.({
         stage: 'bbox',
-        count,
+        count: stats.count,
+        areaApplicable: stats.hasArea,
+        areaKm2: stats.areaKm2,
       })
-      return { success: true, count }
+      return { success: true, ...stats }
     } else {
-      return { success: false, count: 0 }
+      return { success: false, count: 0, hasArea: false, areaKm2: null }
     }
   } catch (_error) {
-    return { success: false, count: 0 }
+    return { success: false, count: 0, hasArea: false, areaKm2: null }
   }
 }
 
@@ -745,7 +821,15 @@ export async function getFeaturesForSpatialWithConnection(
   theme: string,
   outputFile: string,
   progressCallback?: (update: ProgressUpdate) => void,
-): Promise<{ success: boolean; bboxCount: number; finalCount: number }> {
+): Promise<{
+  success: boolean
+  bboxCount: number
+  bboxHasArea: boolean
+  bboxAreaKm2: number | null
+  finalCount: number
+  finalHasArea: boolean
+  finalAreaKm2: number | null
+}> {
   const s3Path = `'s3://overturemaps-us-west-2/release/${ctx.releaseVersion}/theme=${theme}/type=${featureType}/*.parquet'`
   const cacheFile = await getTempCachePath(outputFile)
 
@@ -774,18 +858,22 @@ export async function getFeaturesForSpatialWithConnection(
     await connection.run(bboxFilterQuery)
 
     // Count bbox-filtered features on the shared connection to avoid extra DuckDB startup work.
-    const bboxCount = await getCountWithConnection(connection, cacheFile)
+    const bboxStats = await getFeatureStatsWithConnection(connection, cacheFile)
     progressCallback?.({
       stage: 'bbox',
-      count: bboxCount,
+      count: bboxStats.count,
+      areaApplicable: bboxStats.hasArea,
+      areaKm2: bboxStats.areaKm2,
     })
 
     // Step 2: Apply geometry intersection filter on local cache file (fast operation)
-    if (bboxCount > 0) {
+    if (bboxStats.count > 0) {
       progressCallback?.({
         stage: 'geometry',
         message: `${kleur.white('Filtering')} ${kleur.cyan('geometry')} ${kleur.white('for')} ${kleur.cyan(featureType)} ${kleur.white('from')} ${kleur.magenta(theme)}`,
-        count: bboxCount,
+        count: bboxStats.count,
+        areaApplicable: bboxStats.hasArea,
+        areaKm2: bboxStats.areaKm2,
       })
 
       const clipFeatureGeometry = shouldClipFeatureGeometry(
@@ -831,12 +919,22 @@ export async function getFeaturesForSpatialWithConnection(
       await connection.run(geomFilterQuery)
 
       // Count the final output on the shared connection to avoid extra DuckDB startup work.
-      const finalCount = await getCountWithConnection(connection, outputFile)
+      const finalStats = await getFeatureStatsWithConnection(connection, outputFile)
       progressCallback?.({
         stage: 'geometry',
-        count: finalCount,
+        count: finalStats.count,
+        areaApplicable: finalStats.hasArea,
+        areaKm2: finalStats.areaKm2,
       })
-      return { success: true, bboxCount, finalCount }
+      return {
+        success: true,
+        bboxCount: bboxStats.count,
+        bboxHasArea: bboxStats.hasArea,
+        bboxAreaKm2: bboxStats.areaKm2,
+        finalCount: finalStats.count,
+        finalHasArea: finalStats.hasArea,
+        finalAreaKm2: finalStats.areaKm2,
+      }
     } else {
       // No features in bbox, create empty output file
       await connection.run(
@@ -845,11 +943,29 @@ export async function getFeaturesForSpatialWithConnection(
       progressCallback?.({
         stage: 'bbox',
         count: 0,
+        areaApplicable: bboxStats.hasArea,
+        areaKm2: bboxStats.areaKm2,
       })
-      return { success: true, bboxCount: 0, finalCount: 0 }
+      return {
+        success: true,
+        bboxCount: 0,
+        bboxHasArea: bboxStats.hasArea,
+        bboxAreaKm2: bboxStats.areaKm2,
+        finalCount: 0,
+        finalHasArea: false,
+        finalAreaKm2: null,
+      }
     }
   } catch (_error) {
-    return { success: false, bboxCount: 0, finalCount: 0 }
+    return {
+      success: false,
+      bboxCount: 0,
+      bboxHasArea: false,
+      bboxAreaKm2: null,
+      finalCount: 0,
+      finalHasArea: false,
+      finalAreaKm2: null,
+    }
   }
 }
 

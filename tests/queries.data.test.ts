@@ -132,7 +132,9 @@ async function loadQueriesModule() {
   return await import(`../libs/data/queries.ts?test=${Date.now()}-${Math.random()}`)
 }
 
-function createConnection(counts: number[]) {
+function createConnection(
+  counts: Array<number | { count?: number; polygon_count?: number; area_km2?: number }>,
+) {
   const queries: string[] = []
 
   return {
@@ -142,9 +144,15 @@ function createConnection(counts: number[]) {
     },
     async runAndReadAll(query: string) {
       queries.push(query)
-      const count = counts.shift() ?? 0
+      const nextValue = counts.shift()
+      const count = typeof nextValue === 'number' ? nextValue : (nextValue?.count ?? 0)
+      const polygonCount =
+        typeof nextValue === 'number' ? 0 : (nextValue?.polygon_count ?? 0)
+      const areaKm2 = typeof nextValue === 'number' ? 0 : (nextValue?.area_km2 ?? 0)
       return {
-        getRowObjectsJson: () => [{ count }],
+        getRowObjectsJson: () => [
+          { count, polygon_count: polygonCount, area_km2: areaKm2 },
+        ],
       }
     },
   }
@@ -262,11 +270,26 @@ describe('count helpers', () => {
     assert.equal(await getCount('/tmp/output.parquet'), 42)
   })
 
+  test('parses feature stats results from DuckDB', async () => {
+    const { getFeatureStats } = await loadQueriesModule()
+    runDuckDBQueryMock.mockImplementation(async () => ({
+      stdout: JSON.stringify([{ count: 42, polygon_count: 5, area_km2: 18.25 }]),
+      stderr: '',
+      exitCode: 0,
+    }))
+
+    assert.deepEqual(await getFeatureStats('/tmp/output.parquet'), {
+      count: 42,
+      hasArea: true,
+      areaKm2: 18.25,
+    })
+  })
+
   test('returns null when previous release context or files are unavailable', async () => {
-    const { getLastReleaseCount } = await loadQueriesModule()
+    const { getLastReleaseFeatureStats } = await loadQueriesModule()
 
     assert.equal(
-      await getLastReleaseCount(
+      await getLastReleaseFeatureStats(
         createCtx({
           releaseContext: {
             version: '2026-03-18.0',
@@ -284,21 +307,21 @@ describe('count helpers', () => {
     )
 
     isParquetExistsMock.mockImplementation(async () => false)
-    assert.equal(await getLastReleaseCount(createCtx(), 'building'), null)
+    assert.equal(await getLastReleaseFeatureStats(createCtx(), 'building'), null)
 
     isParquetExistsMock.mockImplementation(async () => true)
     runDuckDBQueryMock.mockImplementation(async () => {
       throw new Error('count failed')
     })
-    assert.equal(await getLastReleaseCount(createCtx(), 'building'), null)
+    assert.equal(await getLastReleaseFeatureStats(createCtx(), 'building'), null)
   })
 
   test('uses the resolved spatial filename for previous release lookups', async () => {
-    const { getLastReleaseCount } = await loadQueriesModule()
+    const { getLastReleaseFeatureStats } = await loadQueriesModule()
 
     isParquetExistsMock.mockImplementation(async () => false)
 
-    await getLastReleaseCount(
+    await getLastReleaseFeatureStats(
       createCtx({
         target: 'bbox',
         spatialFrame: 'bbox',
@@ -439,7 +462,7 @@ describe('feature extraction queries', () => {
   test('returns counts for world extraction success and failure states', async () => {
     const { getFeaturesForWorld } = await loadQueriesModule()
     runDuckDBQueryMock.mockImplementation(async () => ({
-      stdout: JSON.stringify([{ count: 12 }]),
+      stdout: JSON.stringify([{ count: 12, polygon_count: 3, area_km2: 24.5 }]),
       stderr: '',
       exitCode: 0,
     }))
@@ -451,7 +474,7 @@ describe('feature extraction queries', () => {
         '2026-03-18.0',
         '/tmp/world.parquet',
       ),
-      { success: true, count: 12 },
+      { success: true, count: 12, hasArea: true, areaKm2: 24.5 },
     )
 
     runDuckDBQueryMock.mockImplementation(async () => ({
@@ -466,13 +489,13 @@ describe('feature extraction queries', () => {
         '2026-03-18.0',
         '/tmp/world.parquet',
       ),
-      { success: false, count: 0 },
+      { success: false, count: 0, hasArea: false, areaKm2: null },
     )
   })
 
   test('creates an empty output when the bbox pass finds no features', async () => {
     const { getFeaturesForSpatialWithConnection } = await loadQueriesModule()
-    const connection = createConnection([0])
+    const connection = createConnection([{ count: 0, polygon_count: 0, area_km2: 0 }])
 
     const result = await getFeaturesForSpatialWithConnection(
       connection as never,
@@ -482,7 +505,15 @@ describe('feature extraction queries', () => {
       '/tmp/final.parquet',
     )
 
-    assert.deepEqual(result, { success: true, bboxCount: 0, finalCount: 0 })
+    assert.deepEqual(result, {
+      success: true,
+      bboxCount: 0,
+      bboxHasArea: false,
+      bboxAreaKm2: null,
+      finalCount: 0,
+      finalHasArea: false,
+      finalAreaKm2: null,
+    })
     assert.equal(
       connection.queries.some(query => query.includes('LIMIT 0')),
       true,
@@ -491,7 +522,10 @@ describe('feature extraction queries', () => {
 
   test('clips geometry for geometry=clip-all', async () => {
     const { getFeaturesForSpatialWithConnection } = await loadQueriesModule()
-    const connection = createConnection([3, 2])
+    const connection = createConnection([
+      { count: 3, polygon_count: 2, area_km2: 5.5 },
+      { count: 2, polygon_count: 2, area_km2: 4.25 },
+    ])
 
     const result = await getFeaturesForSpatialWithConnection(
       connection as never,
@@ -501,7 +535,15 @@ describe('feature extraction queries', () => {
       '/tmp/final.parquet',
     )
 
-    assert.deepEqual(result, { success: true, bboxCount: 3, finalCount: 2 })
+    assert.deepEqual(result, {
+      success: true,
+      bboxCount: 3,
+      bboxHasArea: true,
+      bboxAreaKm2: 5.5,
+      finalCount: 2,
+      finalHasArea: true,
+      finalAreaKm2: 4.25,
+    })
     assert.equal(
       connection.queries.some(query => query.includes('ST_Intersection')),
       true,
@@ -510,7 +552,10 @@ describe('feature extraction queries', () => {
 
   test('clips only smart feature types for geometry=clip-smart', async () => {
     const { getFeaturesForSpatialWithConnection } = await loadQueriesModule()
-    const connection = createConnection([4, 3])
+    const connection = createConnection([
+      { count: 4, polygon_count: 4, area_km2: 8 },
+      { count: 3, polygon_count: 3, area_km2: 6.5 },
+    ])
 
     await getFeaturesForSpatialWithConnection(
       connection as never,
@@ -526,9 +571,33 @@ describe('feature extraction queries', () => {
     )
   })
 
+  test('clips division_area for geometry=clip-smart', async () => {
+    const { getFeaturesForSpatialWithConnection } = await loadQueriesModule()
+    const connection = createConnection([
+      { count: 4, polygon_count: 4, area_km2: 8 },
+      { count: 3, polygon_count: 3, area_km2: 6.5 },
+    ])
+
+    await getFeaturesForSpatialWithConnection(
+      connection as never,
+      createCtx({ spatialGeometry: 'clip-smart' }),
+      'division_area',
+      'divisions',
+      '/tmp/final.parquet',
+    )
+
+    assert.equal(
+      connection.queries.some(query => query.includes('ST_Intersection')),
+      true,
+    )
+  })
+
   test('preserves geometry when clipping is disabled', async () => {
     const { getFeaturesForSpatialWithConnection } = await loadQueriesModule()
-    const connection = createConnection([4, 3])
+    const connection = createConnection([
+      { count: 4, polygon_count: 4, area_km2: 8 },
+      { count: 3, polygon_count: 3, area_km2: 6.5 },
+    ])
 
     await getFeaturesForSpatialWithConnection(
       connection as never,
@@ -545,7 +614,10 @@ describe('feature extraction queries', () => {
 
   test('uses bbox-within prefilter when predicate=within', async () => {
     const { getFeaturesForSpatialWithConnection } = await loadQueriesModule()
-    const connection = createConnection([4, 3])
+    const connection = createConnection([
+      { count: 4, polygon_count: 4, area_km2: 8 },
+      { count: 3, polygon_count: 3, area_km2: 6.5 },
+    ])
 
     await getFeaturesForSpatialWithConnection(
       connection as never,

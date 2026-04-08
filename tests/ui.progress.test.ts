@@ -1,10 +1,24 @@
 import assert from 'node:assert/strict'
 import { afterEach, beforeEach, describe, mock, test } from 'bun:test'
-import type { ControlContext, ProgressState } from '../libs/core'
+import type { ControlContext, FeatureStats, ProgressState } from '../libs/core'
 
 const noteMock = mock(() => {})
-const getCountMock = mock(async () => 12)
-const getLastReleaseCountMock = mock(async () => 10)
+const getFeatureStatsMock = mock(
+  async () =>
+    ({
+      count: 12,
+      hasArea: true,
+      areaKm2: 48.25,
+    }) satisfies FeatureStats,
+)
+const getLastReleaseFeatureStatsMock = mock(
+  async () =>
+    ({
+      count: 10,
+      hasArea: true,
+      areaKm2: 40.25,
+    }) satisfies FeatureStats,
+)
 function stripAnsi(value: string): string {
   let result = ''
 
@@ -51,8 +65,8 @@ async function loadProgressModule() {
     formatPath: (value: string) => value,
   }))
   mock.module(new URL('../libs/data/queries.ts', import.meta.url).pathname, () => ({
-    getCount: getCountMock,
-    getLastReleaseCount: getLastReleaseCountMock,
+    getFeatureStats: getFeatureStatsMock,
+    getLastReleaseFeatureStats: getLastReleaseFeatureStatsMock,
   }))
   mock.module(new URL('../libs/core/utils.ts', import.meta.url).pathname, () => ({
     getDiffCount: (currentCount: number, previousCount: number | null) =>
@@ -76,6 +90,9 @@ function createProgressState(overrides: Partial<ProgressState> = {}): ProgressSt
     activeStage: null,
     featureCount: 0,
     diffCount: null,
+    hasAreaMetric: false,
+    featureAreaKm2: null,
+    diffAreaKm2: null,
     currentMessage: null,
     ...overrides,
   }
@@ -128,10 +145,18 @@ function createContext(overrides: Partial<ControlContext> = {}): ControlContext 
 
 beforeEach(() => {
   noteMock.mockReset()
-  getCountMock.mockReset()
-  getLastReleaseCountMock.mockReset()
-  getCountMock.mockResolvedValue(12)
-  getLastReleaseCountMock.mockResolvedValue(10)
+  getFeatureStatsMock.mockReset()
+  getLastReleaseFeatureStatsMock.mockReset()
+  getFeatureStatsMock.mockResolvedValue({
+    count: 12,
+    hasArea: true,
+    areaKm2: 48.25,
+  })
+  getLastReleaseFeatureStatsMock.mockResolvedValue({
+    count: 10,
+    hasArea: true,
+    areaKm2: 40.25,
+  })
 })
 
 afterEach(() => {
@@ -146,6 +171,8 @@ describe('progress helpers', () => {
     applyProgressUpdate(progress, {
       stage: 'bbox',
       count: 7,
+      areaApplicable: true,
+      areaKm2: 12.5,
       message: 'Filtering bbox',
     })
 
@@ -157,17 +184,25 @@ describe('progress helpers', () => {
       activeStage: 'bbox',
       featureCount: 7,
       diffCount: 4,
+      hasAreaMetric: true,
+      featureAreaKm2: 12.5,
+      diffAreaKm2: null,
       currentMessage: 'Filtering bbox',
     })
   })
 
   test('formats diff text and column widths for edge cases', async () => {
-    const { toDiffText, calculateColumnWidths } = await loadProgressModule()
+    const { toDiffText, toAreaText, toAreaDiffText, calculateColumnWidths } =
+      await loadProgressModule()
 
     assert.equal(stripAnsi(toDiffText(null)).trim(), 'NEW')
     assert.equal(stripAnsi(toDiffText(0)).trim(), '-')
     assert.equal(stripAnsi(toDiffText(5)).trim(), '+5')
     assert.equal(stripAnsi(toDiffText(-3)).trim(), '-3')
+    assert.equal(stripAnsi(toAreaText(null, false)).trim(), 'n/a')
+    assert.equal(stripAnsi(toAreaText(12.5, true)).trim(), '12.5')
+    assert.equal(stripAnsi(toAreaDiffText(null, true)).trim(), 'NEW')
+    assert.equal(stripAnsi(toAreaDiffText(null, false)).trim(), 'n/a')
     assert.deepEqual(calculateColumnWidths(['short']), {
       featureNameWidth: 16,
       indexWidth: 5,
@@ -205,8 +240,12 @@ describe('handleSkippedFeature', () => {
     console.log = ((...args: unknown[]) => {
       calls.push(args)
     }) as typeof console.log
-    getCountMock.mockRejectedValue(new Error('missing file'))
-    getLastReleaseCountMock.mockResolvedValue(3)
+    getFeatureStatsMock.mockRejectedValue(new Error('missing file'))
+    getLastReleaseFeatureStatsMock.mockResolvedValue({
+      count: 3,
+      hasArea: false,
+      areaKm2: null,
+    })
 
     try {
       await handleSkippedFeature(createContext(), 'building', 0, '/tmp/missing.parquet')
@@ -217,6 +256,7 @@ describe('handleSkippedFeature', () => {
     const output = calls[0]?.[0] as string
     assert.match(output, /\[1\/1\]/)
     assert.match(output, /0/)
+    assert.match(output, /n\/a/)
     assert.match(output, /-3|NEW/)
   })
 })

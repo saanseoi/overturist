@@ -169,6 +169,15 @@ export type Spinner = {
 export type DivisionOption = { value: Division | string; label: string; hint: string }
 
 /**
+ * Aggregated metrics derived from a feature parquet output.
+ */
+export interface FeatureStats {
+  count: number
+  hasArea: boolean
+  areaKm2: number | null
+}
+
+/**
  * Represents the current progress state of download operations.
  */
 export interface ProgressState {
@@ -179,6 +188,9 @@ export interface ProgressState {
   activeStage: 'bbox' | 'geometry' | null
   featureCount: number
   diffCount: number | null // Difference from previous version
+  hasAreaMetric: boolean
+  featureAreaKm2: number | null
+  diffAreaKm2: number | null // Difference from previous version
   currentMessage: string | null
 }
 
@@ -189,6 +201,8 @@ export interface ProgressUpdate {
   stage: 'setup' | 'bbox' | 'geometry'
   message?: string
   count?: number
+  areaKm2?: number | null
+  areaApplicable?: boolean
 }
 
 /**

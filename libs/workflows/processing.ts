@@ -18,7 +18,7 @@ import {
   getDivisionsBySourceRecordId,
   getFeaturesForSpatialWithConnection,
   getFeaturesForWorld,
-  getLastReleaseCount,
+  getLastReleaseFeatureStats,
   localizeDivisionHierarchiesForRelease,
   normalizeOsmRelationRecordId,
 } from '../data/queries'
@@ -27,6 +27,7 @@ import type {
   BBox,
   ControlContext,
   Division,
+  FeatureStats,
   GERS,
   Geometry,
   ProgressState,
@@ -109,7 +110,7 @@ function formatProgressSubject(theme: string | undefined, featureType: string): 
  * @param featureTypes - Total number of feature types
  * @param featureNameWidth - Width for feature name display
  * @param indexWidth - Width for index display
- * @returns Previous-release count and fresh progress state for the feature row
+ * @returns Previous-release stats and fresh progress state for the feature row
  */
 async function initProgressTracker(
   ctx: ControlContext,
@@ -119,7 +120,7 @@ async function initProgressTracker(
   featureNameWidth: number,
   indexWidth: number,
 ) {
-  const lastReleaseCount = await getLastReleaseCount(ctx, featureType)
+  const lastReleaseStats = await getLastReleaseFeatureStats(ctx, featureType)
   const hasGeometryPass = hasExactSpatialPass(ctx)
   const progressSubject = formatProgressSubject(
     ctx.themeMapping[featureType],
@@ -134,6 +135,9 @@ async function initProgressTracker(
     activeStage: 'bbox',
     featureCount: 0,
     diffCount: null,
+    hasAreaMetric: lastReleaseStats?.hasArea ?? false,
+    featureAreaKm2: null,
+    diffAreaKm2: null,
     currentMessage: `${kleur.white('Preparing')} ${progressSubject}`,
   }
 
@@ -147,28 +151,46 @@ async function initProgressTracker(
     ctx.target === 'division' ? 7 : 9,
   )
 
-  return { lastReleaseCount, progressState }
+  return { lastReleaseStats, progressState }
 }
 
 /**
- * Marks the completed stages and stores the final feature count for a row.
- * @param result - Result object with success and count properties
+ * Marks the completed stages and stores the final feature stats for a row.
+ * @param result - Result object with success and stats properties
  * @param progressState - Current progress state to update
- * @param lastReleaseCount - Previous release count for diff calculation
+ * @param lastReleaseStats - Previous release stats for diff calculation
  * @param featureType - Feature type name for error messages
- * @param featureCountKey - Result property that contains the final feature count
+ * @param countKey - Result property that contains the final feature count
+ * @param hasAreaKey - Result property that reports whether polygon area applies
+ * @param areaKey - Result property that contains the final polygon area
  * @param completedStage - Final stage completed by the processing path
  */
 function updateProgressForCompletedFeature(
-  result: { success: boolean; count?: number; finalCount?: number; bboxCount?: number },
+  result: {
+    success: boolean
+    count?: number
+    hasArea?: boolean
+    areaKm2?: number | null
+    finalCount?: number
+    finalHasArea?: boolean
+    finalAreaKm2?: number | null
+    bboxCount?: number
+    bboxHasArea?: boolean
+    bboxAreaKm2?: number | null
+  },
   progressState: ProgressState,
-  lastReleaseCount: number | null,
+  lastReleaseStats: FeatureStats | null,
   theme: string | undefined,
   featureType: string,
-  featureCountKey: keyof Pick<
+  countKey: keyof Pick<typeof result, 'count' | 'finalCount' | 'bboxCount'> = 'count',
+  hasAreaKey: keyof Pick<
     typeof result,
-    'count' | 'finalCount' | 'bboxCount'
-  > = 'count',
+    'hasArea' | 'finalHasArea' | 'bboxHasArea'
+  > = 'hasArea',
+  areaKey: keyof Pick<
+    typeof result,
+    'areaKm2' | 'finalAreaKm2' | 'bboxAreaKm2'
+  > = 'areaKm2',
   completedStage: 'bbox' | 'geometry' = 'bbox',
 ): void {
   if (result.success) {
@@ -177,10 +199,18 @@ function updateProgressForCompletedFeature(
     progressState.isProcessing = false
     progressState.activeStage = null
 
-    const count = (result[featureCountKey] as number) || 0
+    const count = (result[countKey] as number) || 0
+    const hasArea = Boolean(result[hasAreaKey])
+    const areaKm2 = hasArea ? ((result[areaKey] as number | null) ?? 0) : null
 
     progressState.featureCount = count
-    progressState.diffCount = getDiffCount(count, lastReleaseCount)
+    progressState.diffCount = getDiffCount(count, lastReleaseStats?.count ?? null)
+    progressState.hasAreaMetric = hasArea || (lastReleaseStats?.hasArea ?? false)
+    progressState.featureAreaKm2 = areaKm2
+    progressState.diffAreaKm2 =
+      progressState.hasAreaMetric && areaKm2 !== null
+        ? getDiffCount(areaKm2, lastReleaseStats?.areaKm2 ?? null)
+        : null
     progressState.currentMessage = `${kleur.white('Completed')} ${formatProgressSubject(theme, featureType)} ${kleur.white(`(${count} features)`)}`
   } else {
     throw new Error(`Failed to process dataset for ${featureType}`)
@@ -214,6 +244,8 @@ function createProgressCallback(
       stage: update?.stage === 'geometry' ? 'geometry' : fallbackStage,
       message: update?.message,
       count: update?.count,
+      areaApplicable: update?.areaApplicable,
+      areaKm2: update?.areaKm2,
     })
     updateProgressDisplay(
       featureType,
@@ -234,7 +266,7 @@ function createProgressCallback(
  * @param index - Zero-based feature index for progress rendering
  * @param outputPath - Output file path
  * @param progressState - Progress state object
- * @param lastReleaseCount - Previous release count for diff calculation
+ * @param lastReleaseStats - Previous release stats for diff calculation
  * @param connection - Shared DuckDB connection for geometry-constrained runs
  * @returns Promise that resolves when feature processing completes successfully
  */
@@ -244,7 +276,7 @@ async function runFeatureExtraction(
   index: number,
   outputPath: string,
   progressState: ProgressState,
-  lastReleaseCount: number | null,
+  lastReleaseStats: FeatureStats | null,
   connection?: DuckDBConnection,
 ): Promise<void> {
   const { featureTypes, featureNameWidth, indexWidth, target } = ctx
@@ -289,10 +321,12 @@ async function runFeatureExtraction(
     updateProgressForCompletedFeature(
       result,
       progressState,
-      lastReleaseCount,
+      lastReleaseStats,
       theme,
       featureType,
       'count',
+      'hasArea',
+      'areaKm2',
       'bbox',
     )
     return
@@ -325,10 +359,12 @@ async function runFeatureExtraction(
   updateProgressForCompletedFeature(
     result,
     progressState,
-    lastReleaseCount,
+    lastReleaseStats,
     theme,
     featureType,
     'finalCount',
+    'finalHasArea',
+    'finalAreaKm2',
     'geometry',
   )
   return
@@ -368,7 +404,7 @@ async function processFeatureType(
     return
   }
 
-  const { lastReleaseCount, progressState } = await initProgressTracker(
+  const { lastReleaseStats, progressState } = await initProgressTracker(
     ctx,
     featureType,
     index,
@@ -385,7 +421,7 @@ async function processFeatureType(
       index,
       outputPath,
       progressState,
-      lastReleaseCount,
+      lastReleaseStats,
       connection,
     )
     updateProgressDisplay(

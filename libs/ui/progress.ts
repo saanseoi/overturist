@@ -2,7 +2,7 @@ import readline from 'node:readline'
 import kleur from 'kleur'
 import stringWidth from 'string-width'
 import { note } from '../core/note'
-import { getCount, getLastReleaseCount } from '../data/queries'
+import { getFeatureStats, getLastReleaseFeatureStats } from '../data/queries'
 import type { ControlContext, ProgressState, ProgressUpdate } from '../core/types'
 import { getDiffCount } from '../core/utils'
 import { formatBboxPath, formatPath } from './format'
@@ -15,6 +15,8 @@ const NOT_APPLICABLE_CELL = '⬚'
 const SKIPPED_CELL = '⏭️'
 const CELL_COLUMN_WIDTH = 6
 const DIFF_COLUMN_WIDTH = 9
+const AREA_COLUMN_WIDTH = 11
+const AREA_DIFF_COLUMN_WIDTH = 10
 
 type ProgressTableState = {
   isActive: boolean
@@ -96,6 +98,9 @@ export function displayTableHeader(ctx: ControlContext): void {
       activeStage: null,
       featureCount: 0,
       diffCount: null,
+      hasAreaMetric: false,
+      featureAreaKm2: null,
+      diffAreaKm2: null,
       currentMessage: null,
     }
 
@@ -245,6 +250,18 @@ export function applyProgressUpdate(
     progress.featureCount = update.count
   }
 
+  if (typeof update.areaApplicable === 'boolean') {
+    progress.hasAreaMetric = update.areaApplicable
+    if (!update.areaApplicable) {
+      progress.featureAreaKm2 = null
+      progress.diffAreaKm2 = null
+    }
+  }
+
+  if (typeof update.areaKm2 === 'number' || update.areaKm2 === null) {
+    progress.featureAreaKm2 = update.areaKm2
+  }
+
   if (update.message) {
     progress.currentMessage = update.message
   }
@@ -265,15 +282,24 @@ export async function handleSkippedFeature(
   outputPath: string,
 ): Promise<void> {
   const countWidth = getCountColumnWidth(controlContext.target)
-  let existingCount = 0
+  let existingStats = { count: 0, hasArea: false, areaKm2: null as number | null }
   try {
-    existingCount = await getCount(outputPath)
+    existingStats = await getFeatureStats(outputPath)
   } catch (_error) {
-    existingCount = 0
+    existingStats = { count: 0, hasArea: false, areaKm2: null }
   }
 
-  const lastReleaseCount = await getLastReleaseCount(controlContext, featureType)
-  const diffText = toDiffText(getDiffCount(existingCount, lastReleaseCount))
+  const lastReleaseStats = await getLastReleaseFeatureStats(controlContext, featureType)
+  const diffText = toDiffText(
+    getDiffCount(existingStats.count, lastReleaseStats?.count ?? null),
+  )
+  const areaText = toAreaText(existingStats.areaKm2, existingStats.hasArea)
+  const areaDiffText = toAreaDiffText(
+    existingStats.hasArea || (lastReleaseStats?.hasArea ?? false)
+      ? getDiffCount(existingStats.areaKm2 ?? 0, lastReleaseStats?.areaKm2 ?? null)
+      : null,
+    existingStats.hasArea || (lastReleaseStats?.hasArea ?? false),
+  )
   const geomState = hasExactSpatialPass(controlContext) ? 'skipped' : 'na'
 
   const skippedProgress = buildProgressLine({
@@ -285,8 +311,10 @@ export async function handleSkippedFeature(
     countWidth,
     bboxCell: renderCell('skipped'),
     geomCell: renderCell(geomState),
-    countText: existingCount.toString(),
+    countText: existingStats.count.toString(),
     diffText,
+    areaText,
+    areaDiffText,
   })
 
   if (progressTableState.isActive) {
@@ -322,6 +350,63 @@ export function toDiffText(diffCount: number | null): string {
 }
 
 /**
+ * Formats an area value for the progress table.
+ * @param areaKm2 - Area in square kilometers, or null when unavailable
+ * @param hasArea - Whether area applies to the feature type
+ * @returns Styled area cell text.
+ */
+export function toAreaText(areaKm2: number | null, hasArea: boolean): string {
+  if (!hasArea || areaKm2 === null) {
+    return kleur.gray('n/a'.padStart(AREA_COLUMN_WIDTH))
+  }
+
+  const absArea = Math.abs(areaKm2)
+  let value: string
+
+  if (absArea >= 1_000_000) {
+    value = `${(areaKm2 / 1_000_000).toFixed(1)}M`
+  } else if (absArea >= 10_000) {
+    value = `${(areaKm2 / 1_000).toFixed(1)}k`
+  } else if (absArea >= 100) {
+    value = areaKm2.toFixed(0)
+  } else if (absArea >= 10) {
+    value = areaKm2.toFixed(1)
+  } else {
+    value = areaKm2.toFixed(2)
+  }
+
+  return kleur.white(value.padStart(AREA_COLUMN_WIDTH))
+}
+
+/**
+ * Formats an area diff for the progress table.
+ * @param diffAreaKm2 - Difference in square kilometers from the previous release
+ * @param hasArea - Whether area applies to the feature type
+ * @returns Styled area-diff cell text.
+ */
+export function toAreaDiffText(diffAreaKm2: number | null, hasArea: boolean): string {
+  if (!hasArea) {
+    return kleur.gray('n/a'.padStart(AREA_DIFF_COLUMN_WIDTH))
+  }
+
+  if (diffAreaKm2 === null) {
+    return kleur.yellow('NEW'.padStart(AREA_DIFF_COLUMN_WIDTH))
+  }
+
+  if (diffAreaKm2 === 0) {
+    return kleur.white('-'.padStart(AREA_DIFF_COLUMN_WIDTH))
+  }
+
+  const prefix = diffAreaKm2 > 0 ? '+' : ''
+  const value = stripTrailingZeros(Math.abs(diffAreaKm2).toFixed(2))
+  const text = `${prefix}${diffAreaKm2 < 0 ? '-' : ''}${value}`
+
+  return diffAreaKm2 > 0
+    ? kleur.green(text.padStart(AREA_DIFF_COLUMN_WIDTH))
+    : kleur.red(text.padStart(AREA_DIFF_COLUMN_WIDTH))
+}
+
+/**
  * Calculates progress-table column widths for the selected feature types.
  * @param featureTypes - Feature type names to display
  * @returns Computed column widths.
@@ -351,8 +436,8 @@ function buildProgressHeader(
   countWidth: number,
 ): [string, string] {
   const countColumnWidth = Math.max(countWidth, stringWidth('COUNT'))
-  const headerLine = `${kleur.white(''.padEnd(indexWidth + 1))} ${kleur.cyan('FEATURE'.padEnd(featureNameWidth + 1))} ${kleur.white('BBOX'.padEnd(CELL_COLUMN_WIDTH))} ${kleur.white('GEOM'.padEnd(CELL_COLUMN_WIDTH))} ${kleur.white('COUNT'.padEnd(countColumnWidth))} ${kleur.white('DIFF'.padEnd(DIFF_COLUMN_WIDTH - 1))}`
-  const separatorLine = ` ${kleur.gray('─'.repeat(indexWidth + 2))}${kleur.gray('─'.repeat(featureNameWidth))} ${kleur.gray('─'.repeat(CELL_COLUMN_WIDTH))} ${kleur.gray('─'.repeat(CELL_COLUMN_WIDTH))} ${kleur.gray('─'.repeat(countColumnWidth))} ${kleur.gray('─'.repeat(DIFF_COLUMN_WIDTH))}`
+  const headerLine = `${kleur.white(''.padEnd(indexWidth + 1))} ${kleur.cyan('FEATURE'.padEnd(featureNameWidth + 1))} ${kleur.white('BBOX'.padEnd(CELL_COLUMN_WIDTH))} ${kleur.white('GEOM'.padEnd(CELL_COLUMN_WIDTH))} ${kleur.white('COUNT'.padEnd(countColumnWidth))} ${kleur.white('C.DIFF'.padEnd(DIFF_COLUMN_WIDTH))} ${kleur.white('AREA(KM²)'.padEnd(AREA_COLUMN_WIDTH))} ${kleur.white('A.DIFF'.padEnd(AREA_DIFF_COLUMN_WIDTH))}`
+  const separatorLine = ` ${kleur.gray('─'.repeat(indexWidth + 2))}${kleur.gray('─'.repeat(featureNameWidth))} ${kleur.gray('─'.repeat(CELL_COLUMN_WIDTH))} ${kleur.gray('─'.repeat(CELL_COLUMN_WIDTH))} ${kleur.gray('─'.repeat(countColumnWidth))} ${kleur.gray('─'.repeat(DIFF_COLUMN_WIDTH))} ${kleur.gray('─'.repeat(AREA_COLUMN_WIDTH))} ${kleur.gray('─'.repeat(AREA_DIFF_COLUMN_WIDTH))}`
   return [headerLine, separatorLine]
 }
 
@@ -400,6 +485,8 @@ function renderProgressRow(
     geomCell: renderCell(geomState),
     countText: (progress.featureCount || 0).toString(),
     diffText: toDiffText(progress.diffCount),
+    areaText: toAreaText(progress.featureAreaKm2, progress.hasAreaMetric),
+    areaDiffText: toAreaDiffText(progress.diffAreaKm2, progress.hasAreaMetric),
   })
 }
 
@@ -419,6 +506,8 @@ function buildProgressLine(params: {
   geomCell: string
   countText: string
   diffText: string
+  areaText: string
+  areaDiffText: string
 }): string {
   const {
     featureType,
@@ -431,6 +520,8 @@ function buildProgressLine(params: {
     geomCell,
     countText,
     diffText,
+    areaText,
+    areaDiffText,
   } = params
   const indexNum = index + 1
   const progressPrefix =
@@ -441,8 +532,18 @@ function buildProgressLine(params: {
   return (
     `${kleur.white(progressPrefix)} ${kleur.cyan(featureType.padEnd(featureNameWidth))} │ ` +
     `${padDisplayEnd(bboxCell, CELL_COLUMN_WIDTH)} ${padDisplayEnd(geomCell, CELL_COLUMN_WIDTH)} ` +
-    `${padDisplayStart(kleur.white(countText), countWidth)} ${padDisplayStart(diffText, DIFF_COLUMN_WIDTH)}`
+    `${padDisplayStart(kleur.white(countText), countWidth)} ${padDisplayStart(diffText, DIFF_COLUMN_WIDTH)} ` +
+    `${padDisplayStart(areaText, AREA_COLUMN_WIDTH)} ${padDisplayStart(areaDiffText, AREA_DIFF_COLUMN_WIDTH)}`
   )
+}
+
+/**
+ * Removes insignificant decimal suffixes from a numeric string.
+ * @param value - Decimal string produced by `toFixed`
+ * @returns Compact decimal string without trailing zero padding
+ */
+function stripTrailingZeros(value: string): string {
+  return value.replace(/\.?0+$/, '')
 }
 
 /**
