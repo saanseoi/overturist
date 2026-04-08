@@ -266,7 +266,6 @@ export interface OptionConfig {
 
 export interface InteractiveOptions {
   releaseVersion?: string | null
-  releaseData?: ReleaseData
   skipBoundaryClip?: boolean
   clipMode?: ClipMode
   target?: Target

@@ -86,7 +86,7 @@ async function loadGetModule() {
     setupGracefulExit: setupGracefulExitMock,
   }))
 
-  return await import(`../../libs/workflows/get.ts`)
+  return await import(`../../libs/workflows/get.ts?test=${Date.now()}-${Math.random()}`)
 }
 
 function createDivision(id: string): Division {

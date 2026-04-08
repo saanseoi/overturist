@@ -6,7 +6,6 @@ import {
   getCachedSearchResults,
   getVersionsInCache,
 } from '../data/cache'
-import { initializeReleaseVersion } from '../data/releases'
 import { executeDownloadWorkflow, resolveOptions } from './get'
 import {
   infoCmd,
@@ -114,26 +113,7 @@ async function handleDivisionInfoMenu(config: Config, cliArgs: CliArgs): Promise
  * @returns Promise resolving when the user leaves the download menu
  */
 async function handleDownloadMenu(config: Config, cliArgs: CliArgs): Promise<void> {
-  const preselectedTarget = await getPresetDownloadTarget(config, cliArgs)
-
-  if (preselectedTarget) {
-    await displayPresetDownloadHeader(config, cliArgs, preselectedTarget)
-    const releaseOpts = await resolveInteractiveReleaseSelection(config, cliArgs)
-    const controlContext = await resolveOptions(config, cliArgs, {
-      ...releaseOpts,
-      ...preselectedTarget,
-    })
-
-    if (!controlContext) {
-      return
-    }
-
-    await executeDownloadWorkflow(controlContext)
-    return
-  }
-
   while (true) {
-    const releaseOpts = await resolveInteractiveReleaseSelection(config, cliArgs)
     const action = await promptForDownloadAction()
 
     switch (action) {
@@ -145,7 +125,9 @@ async function handleDownloadMenu(config: Config, cliArgs: CliArgs): Promise<voi
         }
 
         if (searchAction === 'new_search') {
-          const controlContext = await resolveOptions(config, cliArgs, releaseOpts)
+          const controlContext = await resolveOptions(config, cliArgs, {
+            releaseVersion: null,
+          })
 
           if (!controlContext) {
             continue
@@ -166,7 +148,7 @@ async function handleDownloadMenu(config: Config, cliArgs: CliArgs): Promise<voi
 
       case 'download_osm_id': {
         const controlContext = await resolveOptions(config, cliArgs, {
-          ...releaseOpts,
+          releaseVersion: null,
           target: 'division',
           divisionLookupMode: 'osm',
         })
@@ -181,7 +163,7 @@ async function handleDownloadMenu(config: Config, cliArgs: CliArgs): Promise<voi
 
       case 'download_world': {
         const controlContext = await resolveOptions(config, cliArgs, {
-          ...releaseOpts,
+          releaseVersion: null,
           target: 'world',
         })
 
@@ -301,6 +283,7 @@ async function handleRepeatSearchWorkflow(
 
   // Use the common initialization and download workflow
   const initResult = await resolveOptions(config, cliArgs, {
+    releaseVersion: searchItem.version,
     selectedDivision: division,
   })
   if (!initResult) {
@@ -348,9 +331,8 @@ async function handlePresetDownloadFlow(
   }
 
   await displayPresetDownloadHeader(config, cliArgs, presetTarget)
-  const releaseOpts = await resolveInteractiveReleaseSelection(config, cliArgs)
   const controlContext = await resolveOptions(config, cliArgs, {
-    ...releaseOpts,
+    releaseVersion: null,
     ...presetTarget,
   })
 
@@ -404,34 +386,6 @@ async function getPresetDownloadTarget(
   }
 
   return null
-}
-
-/**
- * Prompts for a release version before the interactive target-specific flow continues.
- * @param config - Initial configuration object
- * @param cliArgs - Command line arguments
- * @returns Interactive release overrides for downstream option resolution
- */
-async function resolveInteractiveReleaseSelection(
-  config: Config,
-  cliArgs: CliArgs,
-): Promise<Pick<InteractiveOptions, 'releaseVersion' | 'releaseData'>> {
-  if (cliArgs.releaseVersion || config.releaseVersion) {
-    return {}
-  }
-
-  const { releaseVersion, releaseData } = await initializeReleaseVersion(
-    config,
-    cliArgs,
-    {
-      releaseVersion: null,
-    },
-  )
-
-  return {
-    releaseVersion,
-    releaseData,
-  }
 }
 
 /**

@@ -36,10 +36,7 @@ export async function initializeReleaseVersion(
   const s = spinner()
   s.start('Resolving versions')
 
-  const releaseData =
-    interactiveOpts && interactiveOpts.releaseData
-      ? interactiveOpts.releaseData
-      : await fetchLatestVersions(config)
+  const releaseData = await fetchLatestVersions(config)
 
   // Count the number of releases available on S3
   const availableOnS3Count = releaseData.releases.filter(
