@@ -96,6 +96,7 @@ export function displayTableHeader(ctx: ControlContext): void {
       hasGeometryPass: hasExactSpatialPass(ctx),
       isProcessing: false,
       activeStage: null,
+      hasCountMetric: false,
       featureCount: 0,
       diffCount: null,
       hasAreaMetric: false,
@@ -247,6 +248,7 @@ export function applyProgressUpdate(
   }
 
   if (typeof update.count === 'number') {
+    progress.hasCountMetric = true
     progress.featureCount = update.count
   }
 
@@ -347,6 +349,20 @@ export function toDiffText(diffCount: number | null): string {
   }
 
   return kleur.red(diffCount.toString().padStart(9))
+}
+
+/**
+ * Formats a count value for the progress table.
+ * @param count - Count value for the current row
+ * @param hasCount - Whether a real count has been calculated
+ * @returns Styled count cell text.
+ */
+export function toCountText(count: number, hasCount: boolean): string {
+  if (!hasCount) {
+    return kleur.gray('n/a')
+  }
+
+  return kleur.white(count.toString())
 }
 
 /**
@@ -483,8 +499,10 @@ function renderProgressRow(
     countWidth,
     bboxCell: renderCell(bboxState),
     geomCell: renderCell(geomState),
-    countText: (progress.featureCount || 0).toString(),
-    diffText: toDiffText(progress.diffCount),
+    countText: toCountText(progress.featureCount, progress.hasCountMetric),
+    diffText: progress.hasCountMetric
+      ? toDiffText(progress.diffCount)
+      : kleur.gray('n/a'.padStart(DIFF_COLUMN_WIDTH)),
     areaText: toAreaText(progress.featureAreaKm2, progress.hasAreaMetric),
     areaDiffText: toAreaDiffText(progress.diffAreaKm2, progress.hasAreaMetric),
   })
@@ -532,7 +550,7 @@ function buildProgressLine(params: {
   return (
     `${kleur.white(progressPrefix)} ${kleur.cyan(featureType.padEnd(featureNameWidth))} │ ` +
     `${padDisplayEnd(bboxCell, CELL_COLUMN_WIDTH)} ${padDisplayEnd(geomCell, CELL_COLUMN_WIDTH)} ` +
-    `${padDisplayStart(kleur.white(countText), countWidth)} ${padDisplayStart(diffText, DIFF_COLUMN_WIDTH)} ` +
+    `${padDisplayStart(countText, countWidth)} ${padDisplayStart(diffText, DIFF_COLUMN_WIDTH)} ` +
     `${padDisplayStart(areaText, AREA_COLUMN_WIDTH)} ${padDisplayStart(areaDiffText, AREA_DIFF_COLUMN_WIDTH)}`
   )
 }

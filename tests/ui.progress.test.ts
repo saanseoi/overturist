@@ -88,6 +88,7 @@ function createProgressState(overrides: Partial<ProgressState> = {}): ProgressSt
     hasGeometryPass: true,
     isProcessing: false,
     activeStage: null,
+    hasCountMetric: false,
     featureCount: 0,
     diffCount: null,
     hasAreaMetric: false,
@@ -182,6 +183,7 @@ describe('progress helpers', () => {
       hasGeometryPass: true,
       isProcessing: true,
       activeStage: 'bbox',
+      hasCountMetric: true,
       featureCount: 7,
       diffCount: 4,
       hasAreaMetric: true,
@@ -192,9 +194,16 @@ describe('progress helpers', () => {
   })
 
   test('formats diff text and column widths for edge cases', async () => {
-    const { toDiffText, toAreaText, toAreaDiffText, calculateColumnWidths } =
-      await loadProgressModule()
+    const {
+      toCountText,
+      toDiffText,
+      toAreaText,
+      toAreaDiffText,
+      calculateColumnWidths,
+    } = await loadProgressModule()
 
+    assert.equal(stripAnsi(toCountText(0, false)).trim(), 'n/a')
+    assert.equal(stripAnsi(toCountText(0, true)).trim(), '0')
     assert.equal(stripAnsi(toDiffText(null)).trim(), 'NEW')
     assert.equal(stripAnsi(toDiffText(0)).trim(), '-')
     assert.equal(stripAnsi(toDiffText(5)).trim(), '+5')

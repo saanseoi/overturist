@@ -844,7 +844,7 @@ export async function getFeaturesForSpatialWithConnection(
     // Step 1: Filter features by bbox only (fast operation on S3)
     progressCallback?.({
       stage: 'bbox',
-      message: `${kleur.white('Filtering')} ${kleur.cyan('bbox')} ${kleur.white('for')} ${kleur.cyan(featureType)} ${kleur.white('from')} ${kleur.magenta(theme)}`,
+      message: `${kleur.white('Obtaining every')} ${kleur.magenta(featureType)} ${kleur.white('in the')} ${kleur.cyan('bbox')}`,
     })
 
     const bboxFilterQuery = `
@@ -870,7 +870,7 @@ export async function getFeaturesForSpatialWithConnection(
     if (bboxStats.count > 0) {
       progressCallback?.({
         stage: 'geometry',
-        message: `${kleur.white('Filtering')} ${kleur.cyan('geometry')} ${kleur.white('for')} ${kleur.cyan(featureType)} ${kleur.white('from')} ${kleur.magenta(theme)}`,
+        message: `${kleur.white('Obtaining every')} ${kleur.magenta(featureType)} ${kleur.white('in the')} ${kleur.cyan('geometry')}`,
         count: bboxStats.count,
         areaApplicable: bboxStats.hasArea,
         areaKm2: bboxStats.areaKm2,

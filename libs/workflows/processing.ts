@@ -133,6 +133,7 @@ async function initProgressTracker(
     hasGeometryPass,
     isProcessing: true,
     activeStage: 'bbox',
+    hasCountMetric: false,
     featureCount: 0,
     diffCount: null,
     hasAreaMetric: lastReleaseStats?.hasArea ?? false,
@@ -204,6 +205,7 @@ function updateProgressForCompletedFeature(
     const areaKm2 = hasArea ? ((result[areaKey] as number | null) ?? 0) : null
 
     progressState.featureCount = count
+    progressState.hasCountMetric = true
     progressState.diffCount = getDiffCount(count, lastReleaseStats?.count ?? null)
     progressState.hasAreaMetric = hasArea || (lastReleaseStats?.hasArea ?? false)
     progressState.featureAreaKm2 = areaKm2

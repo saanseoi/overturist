@@ -186,6 +186,7 @@ export interface ProgressState {
   hasGeometryPass: boolean
   isProcessing: boolean
   activeStage: 'bbox' | 'geometry' | null
+  hasCountMetric: boolean
   featureCount: number
   diffCount: number | null // Difference from previous version
   hasAreaMetric: boolean
