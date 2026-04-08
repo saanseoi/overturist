@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { confirm, log } from '@clack/prompts'
+import { confirm, log, select } from '@clack/prompts'
 import kleur from 'kleur'
 import { reloadConfig } from '../core/config'
 import type { CliArgs, Config } from '../core/types'
@@ -266,8 +266,8 @@ function formatBytes(bytes: number): string {
 }
 
 /**
- * Purges the entire cache directory.
- * @returns Nothing. Deletes the cache directory after confirmation when it exists.
+ * Purges cache content according to a selected retention strategy.
+ * @returns Nothing. Prompts for a purge mode and deletes the selected cache content.
  */
 export async function purgeCache(): Promise<void> {
   const cacheDir = getCacheDir()
@@ -278,9 +278,21 @@ export async function purgeCache(): Promise<void> {
   }
 
   try {
+    const purgeMode = await promptForCachePurgeMode()
+
+    if (purgeMode === 'cancel') {
+      log.info('Cache purge cancelled.')
+      return
+    }
+
+    const purgePlan = await getCachePurgePlan(cacheDir, purgeMode)
+
+    if (!purgePlan) {
+      return
+    }
+
     const confirmed = await confirm({
-      message:
-        'Are you sure you want to delete the entire cache? This action cannot be undone.',
+      message: purgePlan.confirmMessage,
     })
 
     if (typeof confirmed === 'symbol' || !confirmed) {
@@ -288,8 +300,11 @@ export async function purgeCache(): Promise<void> {
       return
     }
 
-    await fs.rm(cacheDir, { recursive: true, force: true })
-    log.success('Cache purged successfully.')
+    for (const targetPath of purgePlan.pathsToDelete) {
+      await fs.rm(targetPath, { recursive: true, force: true })
+    }
+
+    log.success(purgePlan.successMessage)
   } catch (error) {
     log.error(
       `Failed to purge cache: ${error instanceof Error ? error.message : String(error)}`,
@@ -319,6 +334,124 @@ function getEnvExamplePath(): string {
  */
 function getCacheDir(): string {
   return path.join(process.cwd(), '.cache')
+}
+
+/**
+ * Lists version directories that exist under the cache root.
+ * @param cacheDir - Absolute cache directory path
+ * @returns Release-version directory names sorted newest-first
+ */
+async function getCacheVersionDirs(cacheDir: string): Promise<string[]> {
+  const entries = await fs.readdir(cacheDir, { withFileTypes: true })
+  return entries
+    .filter(entry => entry.isDirectory())
+    .map(entry => entry.name)
+    .sort()
+    .reverse()
+}
+
+/**
+ * Prompts for the cache purge mode.
+ * @returns Selected purge mode, or `cancel` when the prompt is dismissed
+ */
+async function promptForCachePurgeMode(): Promise<
+  'older_versions' | 'all' | 'divisions_keep_search' | 'cancel'
+> {
+  const selected = await select({
+    message: 'Purge cache:',
+    options: [
+      {
+        value: 'older_versions',
+        label: 'Purge older versions',
+        hint: 'keep only the newest version directory',
+      },
+      {
+        value: 'all',
+        label: 'Purge all',
+        hint: 'delete the entire .cache directory',
+      },
+      {
+        value: 'divisions_keep_search',
+        label: 'Purge divisions, keep search',
+        hint: 'remove mirrored division parquet scratch files only',
+      },
+      {
+        value: 'cancel',
+        label: 'Cancel',
+        hint: 'leave cache untouched',
+      },
+    ],
+  })
+
+  return typeof selected === 'symbol' ? 'cancel' : selected
+}
+
+/**
+ * Resolves the concrete cache deletion plan for the selected purge mode.
+ * @param cacheDir - Absolute cache directory path
+ * @param purgeMode - Requested purge mode
+ * @returns Concrete purge plan, or `null` when no action is needed
+ */
+async function getCachePurgePlan(
+  cacheDir: string,
+  purgeMode: 'older_versions' | 'all' | 'divisions_keep_search',
+): Promise<{
+  confirmMessage: string
+  pathsToDelete: string[]
+  successMessage: string
+} | null> {
+  if (purgeMode === 'all') {
+    return {
+      confirmMessage:
+        'Are you sure you want to delete the entire cache? This action cannot be undone.',
+      pathsToDelete: [cacheDir],
+      successMessage: 'Cache purged successfully.',
+    }
+  }
+
+  const versionDirs = await getCacheVersionDirs(cacheDir)
+
+  if (purgeMode === 'older_versions') {
+    if (versionDirs.length <= 1) {
+      log.warning('No older cached versions found to purge.')
+      return null
+    }
+
+    const newestVersion = versionDirs[0]
+    const olderVersions = versionDirs.slice(1)
+
+    return {
+      confirmMessage: `Delete ${olderVersions.length} older cached version${olderVersions.length === 1 ? '' : 's'} and keep ${kleur.cyan(newestVersion)}?`,
+      pathsToDelete: olderVersions.map(version => path.join(cacheDir, version)),
+      successMessage: `Purged ${olderVersions.length} older cached version${olderVersions.length === 1 ? '' : 's'}.`,
+    }
+  }
+
+  // Remove mirrored parquet scratch output while keeping division JSON cache and search history.
+  const divisionPaths = versionDirs.map(version =>
+    path.join(cacheDir, version, 'divisions'),
+  )
+  const existingDivisionPaths = await Promise.all(
+    divisionPaths.map(async divisionPath =>
+      (await pathExists(divisionPath)) ? divisionPath : null,
+    ),
+  )
+  const pathsToDelete = existingDivisionPaths.filter(
+    (divisionPath): divisionPath is string => divisionPath !== null,
+  )
+
+  if (pathsToDelete.length === 0) {
+    log.warning('No mirrored divisions cache found to purge.')
+    return null
+  }
+
+  return {
+    confirmMessage:
+      'Delete mirrored division parquet scratch files while keeping division cache and search history?',
+    pathsToDelete,
+    successMessage:
+      'Purged mirrored divisions cache and kept division cache and search history.',
+  }
 }
 
 /**

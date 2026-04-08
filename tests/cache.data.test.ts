@@ -254,10 +254,11 @@ describe('search cache', () => {
     assert.equal(cached.results[0]?.id, 'gers:central')
   })
 
-  test('returns search history sorted newest-first and ignores invalid entries', async () => {
+  test('returns search history sorted by last run time newest-first and ignores invalid entries', async () => {
     const { getSearchHistory } = await loadCacheModule()
     await writeJsonFile(path.join(cacheRoot, '2026-03-18.0/search/2/older.json'), {
       createdAt: '2026-03-18T00:00:00.000Z',
+      lastRunAt: '2026-03-20T00:00:00.000Z',
       version: '2026-03-18.0',
       adminLevel: 2,
       term: 'older',
@@ -266,11 +267,20 @@ describe('search cache', () => {
     })
     await writeJsonFile(path.join(cacheRoot, '2026-03-18.0/search/2/newer.json'), {
       createdAt: '2026-03-19T00:00:00.000Z',
+      lastRunAt: '2026-03-21T00:00:00.000Z',
       version: '2026-03-18.0',
       adminLevel: 2,
       term: 'newer',
       totalCount: 1,
       results: [createDivision('gers:newer')],
+    })
+    await writeJsonFile(path.join(cacheRoot, '2026-03-18.0/search/2/fallback.json'), {
+      createdAt: '2026-03-20T12:00:00.000Z',
+      version: '2026-03-18.0',
+      adminLevel: 2,
+      term: 'fallback',
+      totalCount: 1,
+      results: [createDivision('gers:fallback')],
     })
     await writeJsonFile(
       path.join(cacheRoot, '2026-03-18.0/search/not-a-level/ignored.json'),
@@ -286,7 +296,7 @@ describe('search cache', () => {
 
     assert.deepEqual(
       history.map(item => item.term),
-      ['newer', 'older'],
+      ['newer', 'fallback', 'older'],
     )
   })
 
