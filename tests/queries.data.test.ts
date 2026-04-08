@@ -88,22 +88,34 @@ async function loadQueriesModule() {
     runDuckDBQuery: runDuckDBQueryMock,
   }))
   mock.module(abs('../libs/core/fs.ts'), () => ({
-    getFeatureOutputFilename: (featureType: string, clipMode: string) =>
-      clipMode === 'preserve'
-        ? `${featureType}.preserveCrop.parquet`
-        : clipMode === 'all'
-          ? `${featureType}.containCrop.parquet`
-          : `${featureType}.parquet`,
+    getFeatureOutputFilename: (
+      featureType: string,
+      clipMode: string,
+      skipBoundaryClip?: boolean,
+    ) =>
+      skipBoundaryClip
+        ? `${featureType}.bboxCrop.parquet`
+        : clipMode === 'preserve'
+          ? `${featureType}.preserveCrop.parquet`
+          : clipMode === 'all'
+            ? `${featureType}.containCrop.parquet`
+            : `${featureType}.parquet`,
     getOutputDir: getOutputDirMock,
     isParquetExists: isParquetExistsMock,
   }))
   mock.module(abs('../libs/core/fs'), () => ({
-    getFeatureOutputFilename: (featureType: string, clipMode: string) =>
-      clipMode === 'preserve'
-        ? `${featureType}.preserveCrop.parquet`
-        : clipMode === 'all'
-          ? `${featureType}.containCrop.parquet`
-          : `${featureType}.parquet`,
+    getFeatureOutputFilename: (
+      featureType: string,
+      clipMode: string,
+      skipBoundaryClip?: boolean,
+    ) =>
+      skipBoundaryClip
+        ? `${featureType}.bboxCrop.parquet`
+        : clipMode === 'preserve'
+          ? `${featureType}.preserveCrop.parquet`
+          : clipMode === 'all'
+            ? `${featureType}.containCrop.parquet`
+            : `${featureType}.parquet`,
     getOutputDir: getOutputDirMock,
     isParquetExists: isParquetExistsMock,
   }))
@@ -276,6 +288,21 @@ describe('count helpers', () => {
       throw new Error('count failed')
     })
     assert.equal(await getLastReleaseCount(createCtx(), 'building'), null)
+  })
+
+  test('uses bbox-only filenames for previous release lookups when boundary clipping is skipped', async () => {
+    const { getLastReleaseCount } = await loadQueriesModule()
+
+    isParquetExistsMock.mockImplementation(async () => false)
+
+    await getLastReleaseCount(createCtx({ skipBoundaryClip: true }), 'building')
+
+    assert.deepEqual(isParquetExistsMock.mock.calls[0], [
+      '/tmp/previous-release',
+      'building',
+      'preserve',
+      true,
+    ])
   })
 })
 

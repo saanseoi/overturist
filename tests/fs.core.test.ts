@@ -176,6 +176,39 @@ describe('initializeFileHandling', () => {
     }
   })
 
+  test('treats bbox-only outputs as distinct existing files', async () => {
+    const { initializeFileHandling } = await loadFsModule()
+    const fs = await import('node:fs/promises')
+    const os = await import('node:os')
+    const path = await import('node:path')
+
+    const outputDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'overturist-file-handling-bbox-'),
+    )
+
+    try {
+      await fs.writeFile(path.join(outputDir, 'building.bboxCrop.parquet'), '')
+
+      await initializeFileHandling(
+        createConfig(),
+        createCliArgs({ onFileExists: 'skip' }),
+        undefined,
+        ['building', 'address'],
+        outputDir,
+        'smart',
+        true,
+      )
+
+      assert.deepEqual(determineActionOnExistingFilesMock.mock.calls[0], [
+        ['building'],
+        'skip',
+        undefined,
+      ])
+    } finally {
+      await fs.rm(outputDir, { recursive: true, force: true })
+    }
+  })
+
   test('exits early when file handling resolves to abort', async () => {
     determineActionOnExistingFilesMock.mockImplementation(async () => 'abort')
     const { initializeFileHandling } = await loadFsModule()

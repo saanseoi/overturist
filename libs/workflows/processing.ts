@@ -385,7 +385,7 @@ async function processFeatureType(
 
   const outputPath = path.join(
     ctx.outputDir,
-    getFeatureOutputFilename(featureType, ctx.clipMode),
+    getFeatureOutputFilename(featureType, ctx.clipMode, ctx.skipBoundaryClip),
   )
 
   const outputFileExists = await fileExists(outputPath)
@@ -866,7 +866,7 @@ export async function downloadFullDataset(ctx: ControlContext): Promise<void> {
       const progress = `(${index + 1}/${featureTypes.length})`
       const outputPath = path.join(
         outputDir,
-        getFeatureOutputFilename(featureType, ctx.clipMode),
+        getFeatureOutputFilename(featureType, ctx.clipMode, ctx.skipBoundaryClip),
       )
 
       // Check if file exists and handle according to onFileExists.

@@ -29,18 +29,20 @@ type DirectoryEntryInfo = {
  * @param featureTypes - Array of feature type names to check for
  * @param regionOutputDir - Directory path to check for existing files
  * @param clipMode - Active clip mode used to derive the expected filename
+ * @param skipBoundaryClip - Whether the run skips geometry clipping and should use bbox-only filenames
  * @returns Promise resolving to array of feature types that have existing files
  */
 export async function checkForExistingFiles(
   featureTypes: string[],
   regionOutputDir: string,
   clipMode: ClipMode = 'smart',
+  skipBoundaryClip: boolean = false,
 ): Promise<string[]> {
   const existingFiles: string[] = []
   for (const type of featureTypes) {
     const filePath = path.join(
       regionOutputDir,
-      getFeatureOutputFilename(type, clipMode),
+      getFeatureOutputFilename(type, clipMode, skipBoundaryClip),
     )
     const fileExists = await fs
       .access(filePath)
@@ -57,13 +59,19 @@ export async function checkForExistingFiles(
  * Builds the versioned output filename for a feature type and clip mode.
  * @param featureType - Feature type name used as the file stem
  * @param clipMode - Active clip mode for the run
+ * @param skipBoundaryClip - Whether the output comes from bbox-only filtering without geometry clipping
  * @returns Parquet filename that avoids collisions across clip modes
- * @remarks `smart` stays unsuffixed for backward-friendly default naming.
+ * @remarks `smart` stays unsuffixed for backward-friendly default naming unless geometry clipping is skipped entirely.
  */
 export function getFeatureOutputFilename(
   featureType: string,
   clipMode: ClipMode = 'smart',
+  skipBoundaryClip: boolean = false,
 ): string {
+  if (skipBoundaryClip) {
+    return `${featureType}.bboxCrop.parquet`
+  }
+
   if (clipMode === 'preserve') {
     return `${featureType}.preserveCrop.parquet`
   }
@@ -222,6 +230,7 @@ export async function ensureVersionedCacheDir(
  * @param featureTypes - Feature types scheduled for output
  * @param outputDir - Output directory for the current run
  * @param clipMode - Active clip mode used to resolve output filenames
+ * @param skipBoundaryClip - Whether the run skips geometry clipping and should treat bbox-only outputs as distinct files
  * @returns Promise resolving to the selected existing-file strategy
  */
 export async function initializeFileHandling(
@@ -231,11 +240,17 @@ export async function initializeFileHandling(
   featureTypes: string[],
   outputDir: string,
   clipMode: ClipMode = 'smart',
+  skipBoundaryClip: boolean = false,
 ): Promise<{
   onFileExists: OnExistingFilesAction | null
 }> {
   const userDefinedOnFileExists = cliArgs.onFileExists || config.onFileExists
-  const existingFiles = await checkForExistingFiles(featureTypes, outputDir, clipMode)
+  const existingFiles = await checkForExistingFiles(
+    featureTypes,
+    outputDir,
+    clipMode,
+    skipBoundaryClip,
+  )
   const onFileExists = await determineActionOnExistingFiles(
     existingFiles,
     userDefinedOnFileExists,
@@ -340,16 +355,18 @@ export async function fileExists(filePath: string): Promise<boolean> {
  * @param outputDir - Directory that should contain the Parquet file
  * @param featureType - The feature type to check for
  * @param clipMode - Active clip mode used to derive the expected filename
+ * @param skipBoundaryClip - Whether the run skips geometry clipping and should use bbox-only filenames
  * @returns Promise resolving to true if the Parquet file exists
  */
 export async function isParquetExists(
   outputDir: string,
   featureType: string,
   clipMode: ClipMode = 'smart',
+  skipBoundaryClip: boolean = false,
 ): Promise<boolean> {
   const parquetFile = path.join(
     outputDir,
-    getFeatureOutputFilename(featureType, clipMode),
+    getFeatureOutputFilename(featureType, clipMode, skipBoundaryClip),
   )
 
   return await fileExists(parquetFile)

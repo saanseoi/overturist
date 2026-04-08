@@ -128,6 +128,10 @@ describe('filesystem helpers', () => {
   test('builds clip-mode-aware parquet filenames', () => {
     assert.equal(getFeatureOutputFilename('building', 'smart'), 'building.parquet')
     assert.equal(
+      getFeatureOutputFilename('building', 'smart', true),
+      'building.bboxCrop.parquet',
+    )
+    assert.equal(
       getFeatureOutputFilename('building', 'preserve'),
       'building.preserveCrop.parquet',
     )
@@ -142,6 +146,7 @@ describe('filesystem helpers', () => {
     await ensureDirectoryExists(outputDir)
     await fs.writeFile(path.join(outputDir, 'building.parquet'), '')
     await fs.writeFile(path.join(outputDir, 'segment.containCrop.parquet'), '')
+    await fs.writeFile(path.join(outputDir, 'address.bboxCrop.parquet'), '')
 
     const existing = await checkForExistingFiles(
       ['building', 'address', 'segment'],
@@ -150,6 +155,15 @@ describe('filesystem helpers', () => {
     )
 
     assert.deepEqual(existing, ['segment'])
+
+    const bboxOnlyExisting = await checkForExistingFiles(
+      ['building', 'address', 'segment'],
+      outputDir,
+      'smart',
+      true,
+    )
+
+    assert.deepEqual(bboxOnlyExisting, ['address'])
   })
 
   test('creates output directories for the requested target', async () => {
@@ -243,11 +257,13 @@ describe('filesystem helpers', () => {
     const parquetFile = path.join(outputDir, 'building.parquet')
     await fs.writeFile(parquetFile, '')
     await fs.writeFile(path.join(outputDir, 'address.preserveCrop.parquet'), '')
+    await fs.writeFile(path.join(outputDir, 'segment.bboxCrop.parquet'), '')
 
     assert.equal(await fileExists(parquetFile), true)
     assert.equal(await fileExists(path.join(outputDir, 'missing.parquet')), false)
     assert.equal(await isParquetExists(outputDir, 'building'), true)
     assert.equal(await isParquetExists(outputDir, 'address'), false)
     assert.equal(await isParquetExists(outputDir, 'address', 'preserve'), true)
+    assert.equal(await isParquetExists(outputDir, 'segment', 'smart', true), true)
   })
 })

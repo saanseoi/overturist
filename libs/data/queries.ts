@@ -369,12 +369,13 @@ export async function getLastReleaseCount(
         previousVersionOutputDir,
         featureType,
         ctx.clipMode,
+        ctx.skipBoundaryClip,
       )
 
       if (fileExists) {
         const previousFile = path.join(
           previousVersionOutputDir,
-          getFeatureOutputFilename(featureType, ctx.clipMode),
+          getFeatureOutputFilename(featureType, ctx.clipMode, ctx.skipBoundaryClip),
         )
         return await getCount(previousFile)
       }

@@ -82,6 +82,7 @@ export async function resolveOptions(
     featureTypes,
     outputDir,
     clipMode,
+    skipBoundaryClip,
   )
 
   return {
