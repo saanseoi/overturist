@@ -47,9 +47,9 @@ export function buildSearchHistoryOptions(history: SearchHistoryItem[]): Array<{
     label: string
     hint: string
   }> = history.slice(0, 50).map(entry => {
-    const createdDate = new Date(entry.createdAt)
-    const date = createdDate.toISOString().split('T')[0]
-    const time = createdDate.toTimeString().split(' ')[0].substring(0, 5)
+    const lastRunDate = new Date(entry.lastRunAt ?? entry.createdAt)
+    const date = lastRunDate.toISOString().split('T')[0]
+    const time = lastRunDate.toTimeString().split(' ')[0].substring(0, 5)
     const levelName = toSearchHistoryLevelLabel(
       entry.version,
       entry.adminLevel,

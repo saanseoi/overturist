@@ -2,10 +2,7 @@ import { select } from '@clack/prompts'
 import { getS3Releases } from '../data/s3'
 import type { ReleaseData } from '../core/types'
 import { successExit } from '../core/utils'
-import {
-  buildReleaseVersionOptions,
-  getSelectableReleaseVersions,
-} from './releases.utils'
+import { buildReleaseVersionOptions } from './releases.utils'
 
 /**
  * Prompts for a release version when interactive selection is required.
@@ -13,19 +10,31 @@ import {
  * @returns Selected release version.
  */
 export async function selectReleaseVersion(releaseData?: ReleaseData): Promise<string> {
-  let availableReleases: string[]
+  let resolvedReleaseData = releaseData
 
-  if (releaseData) {
-    availableReleases = getSelectableReleaseVersions(releaseData)
-  } else {
+  if (!resolvedReleaseData) {
     const { s3Releases } = await getS3Releases()
-    availableReleases = s3Releases
+    const releases = s3Releases.map(version => ({
+      version,
+      date: version.slice(0, 10),
+      schema: 'Unknown',
+      isReleased: true,
+      isAvailableOnS3: true,
+    }))
+    resolvedReleaseData = {
+      lastUpdated: new Date().toISOString(),
+      lastChecked: new Date().toISOString(),
+      source: 'S3',
+      latest: s3Releases[0] ?? 'Unknown',
+      totalReleases: releases.length,
+      releases,
+    }
   }
 
-  const versionOptions = buildReleaseVersionOptions(availableReleases)
+  const versionOptions = buildReleaseVersionOptions(resolvedReleaseData)
 
   const selectedVersion = await select({
-    message: 'Choose a release version:',
+    message: 'Which version should be downloaded?',
     options: versionOptions,
   })
 
