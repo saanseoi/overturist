@@ -55,7 +55,7 @@ export async function initializeDivision(
   target: Target,
   interactiveOpts: InteractiveOptions | false | undefined,
 ): Promise<{ divisionId: string | null; division: Division | null }> {
-  if (target === 'world') {
+  if (target === 'world' || target === 'bbox') {
     return {
       divisionId: null,
       division: null,

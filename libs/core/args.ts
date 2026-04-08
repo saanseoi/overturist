@@ -30,11 +30,6 @@ const options: Record<string, OptionConfig> = {
     alias: 't',
     group: 'Download',
   },
-  target: {
-    description: `Download extract by ${kleur.grey('division, bbox, or world')}`,
-    boolean: false,
-    group: 'Geospatial',
-  },
   division: {
     description:
       "Filter results by this division's boundaries using its stable Overture id",
@@ -45,6 +40,11 @@ const options: Record<string, OptionConfig> = {
   osmId: {
     description: 'Resolve a division from an OSM relation id',
     boolean: false,
+    group: 'Geospatial',
+  },
+  world: {
+    description: 'Download the whole world',
+    boolean: true,
     group: 'Geospatial',
   },
   bbox: {
@@ -98,16 +98,7 @@ const options: Record<string, OptionConfig> = {
 
 const argConfig = {
   boolean: Object.keys(options).filter(key => options[key]?.boolean),
-  string: [
-    'theme',
-    'type',
-    'division',
-    'osmId',
-    'release',
-    'bbox',
-    'target',
-    'clip-mode',
-  ], // Add support for multiple values
+  string: ['theme', 'type', 'division', 'osmId', 'release', 'bbox', 'clip-mode'], // Add support for multiple values
   alias: Object.fromEntries(
     Object.entries(options)
       .filter(([, value]) => value.alias)
@@ -123,6 +114,7 @@ const argConfig = {
  * @remarks Parsing happens inside this function so tests can supply their own argv.
  */
 export function handleArguments(argv: string[] = process.argv): CliArgs {
+  rejectRemovedLegacyFlags(argv)
   const parsedArgs = parseArgs(argv)
 
   // Handle display flags first (help, examples)
@@ -143,10 +135,15 @@ export function handleArguments(argv: string[] = process.argv): CliArgs {
   const osmId = parseStringArgument(parsedArgs.osmId)
   const releaseVersion = parseStringArgument(parsedArgs.release)
   const locale = parseStringArgument(parsedArgs.locale)
-  const clipMode = validateClipMode(parseStringArgument(parsedArgs['clip-mode']))
+  const clipModeArg = parseStringArgument(parsedArgs['clip-mode'])
+  const clipMode = clipModeArg ? validateClipMode(clipModeArg) : undefined
 
-  // Parse Limited Sets
-  const target = validateTarget(parsedArgs.target)
+  // Infer the target from explicit location flags.
+  const divisionRequested = hasOption(argv, 'division', 'd')
+  const osmIdRequested = hasOption(argv, 'osmId')
+  const bboxRequested = hasOption(argv, 'bbox')
+  const world = hasOption(argv, 'world')
+  const target = inferCliTarget(divisionRequested, osmIdRequested, bboxRequested, world)
 
   return {
     onFileExists,
@@ -154,14 +151,33 @@ export function handleArguments(argv: string[] = process.argv): CliArgs {
     types,
     divisionId,
     osmId,
+    divisionRequested,
+    osmIdRequested,
+    bboxRequested,
     releaseVersion,
     bbox,
     skipBoundaryClip: parsedArgs['skip-bc'],
     clipMode,
-    target,
+    world,
     locale,
     get: isGetCommand(argv),
     info: isInfoCommand(argv),
+  }
+}
+
+/**
+ * Rejects removed legacy flags before delegating to the argument parser.
+ * @param argv - Raw process arguments, including runtime and script paths
+ * @returns Nothing. Exits through the standard help/error path when a removed flag is used.
+ */
+function rejectRemovedLegacyFlags(argv: string[]): void {
+  if (hasOption(argv, 'target')) {
+    console.error(
+      kleur.red(
+        `The --target flag has been removed. Use ${kleur.white('--division')}, ${kleur.white('--osmId')}, ${kleur.white('--bbox')}, or ${kleur.white('--world')} instead.`,
+      ),
+    )
+    process.exit(1)
   }
 }
 
@@ -317,6 +333,10 @@ export function displayExamples() {
         {
           command: '--osmId 12345',
           description: 'Resolve the target division from an OSM relation id',
+        },
+        {
+          command: '--world',
+          description: 'Download the full global dataset',
         },
         {
           command: '--bbox -71.0,42.3,-71.1,42.4',
@@ -568,6 +588,55 @@ function parseStringArgument(arg: string | undefined): string | undefined {
 }
 
 /**
+ * Checks whether a raw CLI flag was present, regardless of whether it had a value.
+ * @param argv - Raw process arguments
+ * @param optionName - Long option name without leading dashes
+ * @param alias - Optional short alias without leading dash
+ * @returns True when the option token appears in argv
+ */
+function hasOption(argv: string[], optionName: string, alias?: string): boolean {
+  const longOption = `--${optionName}`
+  const shortOption = alias ? `-${alias}` : null
+
+  return argv.some(
+    token =>
+      token === longOption ||
+      token.startsWith(`${longOption}=`) ||
+      (shortOption !== null &&
+        (token === shortOption || token.startsWith(`${shortOption}=`))),
+  )
+}
+
+/**
+ * Infers the effective CLI target from explicit location flags.
+ * @param divisionRequested - Whether `--division` was present
+ * @param osmIdRequested - Whether `--osmId` was present
+ * @param bboxRequested - Whether `--bbox` was present
+ * @param world - Whether `--world` was present
+ * @returns Explicit target override for the CLI invocation
+ */
+function inferCliTarget(
+  divisionRequested: boolean,
+  osmIdRequested: boolean,
+  bboxRequested: boolean,
+  world: boolean,
+) {
+  if (divisionRequested || osmIdRequested) {
+    return 'division' as const
+  }
+
+  if (bboxRequested) {
+    return 'bbox' as const
+  }
+
+  if (world) {
+    return 'world' as const
+  }
+
+  return undefined
+}
+
+/**
  * Parses an argument that can be an array, comma-separated string, or single value.
  * @param arg - The argument to parse (can be array, string, or undefined)
  * @returns Array of strings or undefined if no argument provided
@@ -651,12 +720,16 @@ function parseBboxString(bboxStr: string): BBox | null {
  * @returns File handling action mode (skip, replace, or abort)
  * @remarks `replace` takes precedence over `abort`, and `skip` remains the default.
  */
-function parseFileHandlingAction(args: ParsedArgs): OnExistingFilesAction {
+function parseFileHandlingAction(args: ParsedArgs): OnExistingFilesAction | undefined {
+  if (args.skip) {
+    return 'skip'
+  }
+
   if (args.replace) {
     return 'replace'
   } else if (args.abort) {
     return 'abort'
-  } else {
-    return 'skip' // Default action
   }
+
+  return undefined
 }

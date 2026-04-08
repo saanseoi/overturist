@@ -210,17 +210,20 @@ export interface BBox {
 export type Geometry = string
 
 export interface CliArgs {
-  onFileExists: OnExistingFilesAction
+  onFileExists?: OnExistingFilesAction
   themes?: string[]
   types?: string[]
   divisionId?: GERS
   osmId?: string
+  divisionRequested?: boolean
+  osmIdRequested?: boolean
+  bboxRequested?: boolean
   releaseVersion?: Version
   examples?: boolean
   bbox?: BBox
   skipBoundaryClip?: boolean
   clipMode?: ClipMode
-  target?: Target
+  world?: boolean
   locale?: string
   get?: boolean
   info?: boolean
@@ -233,6 +236,7 @@ export type ParsedArgs = {
   help?: boolean
   examples?: boolean
   'skip-bc'?: boolean
+  world?: boolean
   skip?: boolean
   replace?: boolean
   abort?: boolean
@@ -242,7 +246,6 @@ export type ParsedArgs = {
   type?: string | string[]
 
   // String arguments
-  target?: Target
   division?: string
   osmId?: string
   release?: string
@@ -263,6 +266,7 @@ export interface OptionConfig {
 
 export interface InteractiveOptions {
   releaseVersion?: string | null
+  releaseData?: ReleaseData
   skipBoundaryClip?: boolean
   clipMode?: ClipMode
   target?: Target
@@ -302,6 +306,7 @@ export interface ControlContext {
 
 export type CachedSearchResults = {
   createdAt: string
+  lastRunAt?: string
   version: Version
   adminLevel: number
   term: string

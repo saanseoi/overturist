@@ -234,7 +234,7 @@ export async function initializeFileHandling(
 ): Promise<{
   onFileExists: OnExistingFilesAction | null
 }> {
-  const userDefinedOnFileExists = config.onFileExists || cliArgs.onFileExists
+  const userDefinedOnFileExists = cliArgs.onFileExists || config.onFileExists
   const existingFiles = await checkForExistingFiles(featureTypes, outputDir, clipMode)
   const onFileExists = await determineActionOnExistingFiles(
     existingFiles,
