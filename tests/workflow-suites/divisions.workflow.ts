@@ -219,6 +219,20 @@ describe('initializeDivision', () => {
     assert.deepEqual(result, { divisionId: null, division: null })
   })
 
+  test('returns null division context for bbox downloads', async () => {
+    const { initializeDivision } = await loadDivisionsModule()
+    const result = await initializeDivision(
+      '2026-03-18.0',
+      'en',
+      createConfig(),
+      createCliArgs(),
+      'bbox',
+      false,
+    )
+
+    assert.deepEqual(result, { divisionId: null, division: null })
+  })
+
   test('prefers an explicit CLI division id over config defaults', async () => {
     const { initializeDivision } = await loadDivisionsModule()
     const localizedDivision = createDivision('cli-division')

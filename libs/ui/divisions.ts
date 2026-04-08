@@ -15,6 +15,7 @@ import {
   formatHierarchyEntries,
   formatSingleLineBbox,
   getAreaPlaceholder,
+  sortDivisionResultsLargeToSmall,
 } from './divisions.utils'
 
 /**
@@ -120,7 +121,8 @@ export async function promptForDivisionSelection(searchResults: {
   results: Division[]
   totalCount: number
 }): Promise<Division> {
-  const { results, totalCount } = searchResults
+  const { totalCount } = searchResults
+  const results = sortDivisionResultsLargeToSmall(searchResults.results)
 
   if (totalCount === 0 || results.length === 0) {
     successExit('No divisions found. Please try a different search term.')

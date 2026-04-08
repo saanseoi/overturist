@@ -1,6 +1,11 @@
 import kleur from 'kleur'
+import { ALL_DIVISION_SUBTYPES } from '../core/constants'
 import type { BBox, Division, DivisionOption } from '../core/types'
 import { ANY_ADMIN_LEVEL } from './shared'
+
+const DIVISION_SUBTYPE_SORT_ORDER = new Map(
+  ALL_DIVISION_SUBTYPES.map((subtype, index) => [subtype, index]),
+)
 
 /**
  * Returns placeholder text tuned to the chosen admin level.
@@ -64,6 +69,32 @@ export function buildDivisionSelectionOption(
     label,
     hint: remainingHierarchy || '',
   }
+}
+
+/**
+ * Sorts division search results from larger administrative units to smaller ones.
+ * @param results - Division results returned from a search
+ * @returns New array ordered by subtype breadth, then hierarchy/name for stability
+ */
+export function sortDivisionResultsLargeToSmall(results: Division[]): Division[] {
+  return [...results].sort((a, b) => {
+    const subtypeOrder =
+      getDivisionSubtypeSortIndex(a.subtype) - getDivisionSubtypeSortIndex(b.subtype)
+
+    if (subtypeOrder !== 0) {
+      return subtypeOrder
+    }
+
+    const hierarchyOrder = getComparableHierarchyPath(a).localeCompare(
+      getComparableHierarchyPath(b),
+    )
+
+    if (hierarchyOrder !== 0) {
+      return hierarchyOrder
+    }
+
+    return a.id.localeCompare(b.id)
+  })
 }
 
 /**
@@ -229,4 +260,34 @@ function formatHierarchyEntryLine(entry?: {
   }
 
   return `${kleur.cyan(entry.name)} ${kleur.gray(`(${entry.subtype}, ${entry.division_id})`)}`
+}
+
+/**
+ * Returns the subtype sort index, defaulting unknown values to the end.
+ * @param subtype - Division subtype to rank
+ * @returns Numeric sort index used for ordering results
+ */
+function getDivisionSubtypeSortIndex(subtype?: string): number {
+  if (!subtype) {
+    return Number.MAX_SAFE_INTEGER
+  }
+
+  return (
+    DIVISION_SUBTYPE_SORT_ORDER.get(
+      subtype as (typeof ALL_DIVISION_SUBTYPES)[number],
+    ) ?? Number.MAX_SAFE_INTEGER
+  )
+}
+
+/**
+ * Builds a stable hierarchy string for secondary alphabetical sorting.
+ * @param division - Division result to convert
+ * @returns Comparable hierarchy path string
+ */
+function getComparableHierarchyPath(division: Division): string {
+  return (
+    division.hierarchies?.[0]?.map(entry => entry.name.toLowerCase()).join(' / ') ||
+    division.names?.primary?.toLowerCase() ||
+    division.id.toLowerCase()
+  )
 }
