@@ -403,15 +403,11 @@ export async function initializeBounds(
   const spatialGeometry = validateSpatialGeometry(
     cliArgs.geometry || config.spatialGeometry,
   )
-  const bbox = cliArgs.bbox || config.bbox
+  const requestedBBox = cliArgs.bbox || config.bbox
 
-  if (spatialFrame === 'bbox' && !bbox) {
-    bail('You must provide a bounding box when using frame=bbox')
-  }
-
-  if (spatialFrame === 'bbox' && bbox) {
+  if (spatialFrame === 'bbox' && requestedBBox) {
     return {
-      bbox,
+      bbox: requestedBBox,
       geometry: null,
       spatialFrame,
       spatialPredicate,
@@ -424,6 +420,10 @@ export async function initializeBounds(
     bail('You must provide a DivisionId if you are using the division target')
   }
 
+  if (spatialFrame === 'bbox' && target !== 'division') {
+    bail('You must provide a bounding box when using frame=bbox')
+  }
+
   // Extract bounds from division geometry
   const bounds = await extractBoundsFromDivisionGeometry(
     releaseVersion,
@@ -433,8 +433,19 @@ export async function initializeBounds(
   if (!bounds?.bbox || !bounds.geometry) {
     bail('Division frame requires valid division geometry and bbox')
   }
+
+  if (spatialFrame === 'bbox') {
+    return {
+      bbox: bounds.bbox,
+      geometry: null,
+      spatialFrame,
+      spatialPredicate,
+      spatialGeometry,
+    }
+  }
+
   return {
-    bbox: bbox || bounds?.bbox || null,
+    bbox: requestedBBox || bounds?.bbox || null,
     geometry: bounds.geometry,
     spatialFrame,
     spatialPredicate,

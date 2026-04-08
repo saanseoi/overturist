@@ -291,6 +291,32 @@ describe('initializeBounds', () => {
     })
   })
 
+  test('reuses division bbox when frame=bbox is requested without explicit bbox input', async () => {
+    const { initializeBounds } = await loadConfigModule()
+    const division = createDivision()
+
+    const result = await initializeBounds(
+      createConfig(),
+      createCliArgs({
+        frame: 'bbox',
+        predicate: 'within',
+        geometry: 'preserve',
+      }),
+      'division',
+      division,
+      division.id,
+      '2026-03-18.0',
+    )
+
+    assert.deepEqual(result, {
+      bbox: { xmin: 1, ymin: 2, xmax: 3, ymax: 4 },
+      geometry: null,
+      spatialFrame: 'bbox',
+      spatialPredicate: 'within',
+      spatialGeometry: 'preserve',
+    })
+  })
+
   test('extracts bounds from division geometry when using division frame', async () => {
     const { initializeBounds } = await loadConfigModule()
     const division = createDivision()
