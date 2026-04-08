@@ -18,6 +18,7 @@ function createHistoryItem(
     adminLevel: 2,
     version: '2026-03-18.0',
     createdAt: '2026-04-07T01:23:00.000Z',
+    lastRunAt: '2026-04-07T01:23:00.000Z',
     totalCount: 2,
     results: [],
     ...overrides,
@@ -122,6 +123,7 @@ describe('search-history utils', () => {
 
     assert.equal(options.length, 51)
     assert.match(options[0]?.hint ?? '', /1 result$/)
+    assert.match(options[0]?.hint ?? '', /2026-04-07 01:23/)
     assert.equal(options.at(-1)?.value, 'show_more')
     assert.match(options.at(-1)?.hint ?? '', /Showing 50 of 51 total searches/)
   })

@@ -188,6 +188,7 @@ function isCachedSearchResults(value: unknown): value is CachedSearchResults {
   return (
     isRecord(value) &&
     typeof value.createdAt === 'string' &&
+    (value.lastRunAt === undefined || typeof value.lastRunAt === 'string') &&
     typeof value.version === 'string' &&
     typeof value.adminLevel === 'number' &&
     typeof value.term === 'string' &&
@@ -542,8 +543,10 @@ export async function cacheSearchResults(
   searchResults: { results: Division[]; totalCount: number },
 ): Promise<void> {
   const searchCacheDir = getSearchCachePath(version, adminLevel)
+  const timestamp = new Date().toISOString()
   const payload: CachedSearchResults = {
-    createdAt: new Date().toISOString(),
+    createdAt: timestamp,
+    lastRunAt: timestamp,
     version,
     adminLevel,
     term,
@@ -579,7 +582,7 @@ export async function getCachedSearchResults(
 
 /**
  * Gets all cached search histories across all versions and admin levels.
- * @returns Promise<Array> of search history entries sorted by createdAt (newest first)
+ * @returns Promise<Array> of search history entries sorted by last run time (newest first)
  */
 export async function getSearchHistory(): Promise<SearchHistory> {
   const histories: SearchHistory = []
@@ -623,8 +626,17 @@ export async function getSearchHistory(): Promise<SearchHistory> {
   )
 
   return histories.sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    (a, b) => getSearchHistoryTimestamp(b) - getSearchHistoryTimestamp(a),
   )
+}
+
+/**
+ * Resolves the most recent execution timestamp for a cached search entry.
+ * @param historyItem - Cached search entry from disk
+ * @returns Millisecond timestamp used for sorting history newest-first
+ */
+function getSearchHistoryTimestamp(historyItem: SearchHistoryItem): number {
+  return new Date(historyItem.lastRunAt ?? historyItem.createdAt).getTime()
 }
 
 /**
