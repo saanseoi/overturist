@@ -17,7 +17,9 @@ function createConfig(overrides: Partial<Config> = {}): Config {
     releaseUrl: 'https://docs.overturemaps.org/release-calendar/',
     target: 'division',
     confirmFeatureSelection: true,
-    clipMode: 'preserve',
+    spatialFrame: 'division',
+    spatialPredicate: 'intersects',
+    spatialGeometry: 'preserve',
     ...overrides,
   }
 }

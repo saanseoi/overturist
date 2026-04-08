@@ -4,11 +4,13 @@ import kleur from 'kleur'
 import type {
   BBox,
   CliArgs,
-  ClipMode,
   Config,
   Division,
   InteractiveOptions,
   OnExistingFilesAction,
+  SpatialFrame,
+  SpatialGeometryMode,
+  SpatialPredicate,
   Target,
   Version,
 } from './types'
@@ -28,21 +30,31 @@ type DirectoryEntryInfo = {
  * Checks for existing Parquet files in the given output directory.
  * @param featureTypes - Array of feature type names to check for
  * @param regionOutputDir - Directory path to check for existing files
- * @param clipMode - Active clip mode used to derive the expected filename
- * @param skipBoundaryClip - Whether the run skips geometry clipping and should use bbox-only filenames
+ * @param target - Selected extraction target
+ * @param spatialFrame - Active spatial frame used to derive the expected filename
+ * @param spatialPredicate - Active spatial predicate used to derive the expected filename
+ * @param spatialGeometry - Active spatial geometry used to derive the expected filename
  * @returns Promise resolving to array of feature types that have existing files
  */
 export async function checkForExistingFiles(
   featureTypes: string[],
   regionOutputDir: string,
-  clipMode: ClipMode = 'smart',
-  skipBoundaryClip: boolean = false,
+  target: Target,
+  spatialFrame: SpatialFrame = 'division',
+  spatialPredicate: SpatialPredicate = 'intersects',
+  spatialGeometry: SpatialGeometryMode = 'clip-smart',
 ): Promise<string[]> {
   const existingFiles: string[] = []
   for (const type of featureTypes) {
     const filePath = path.join(
       regionOutputDir,
-      getFeatureOutputFilename(type, clipMode, skipBoundaryClip),
+      getFeatureOutputFilename(
+        type,
+        target,
+        spatialFrame,
+        spatialPredicate,
+        spatialGeometry,
+      ),
     )
     const fileExists = await fs
       .access(filePath)
@@ -56,31 +68,33 @@ export async function checkForExistingFiles(
 }
 
 /**
- * Builds the versioned output filename for a feature type and clip mode.
+ * Builds the versioned output filename for a feature type and spatial filter configuration.
  * @param featureType - Feature type name used as the file stem
- * @param clipMode - Active clip mode for the run
- * @param skipBoundaryClip - Whether the output comes from bbox-only filtering without geometry clipping
- * @returns Parquet filename that avoids collisions across clip modes
- * @remarks `smart` stays unsuffixed for backward-friendly default naming unless geometry clipping is skipped entirely.
+ * @param target - Selected extraction target
+ * @param spatialFrame - Active spatial frame for the run
+ * @param spatialPredicate - Active spatial predicate for the run
+ * @param spatialGeometry - Active spatial geometry for the run
+ * @returns Parquet filename that avoids collisions across spatial modes
  */
 export function getFeatureOutputFilename(
   featureType: string,
-  clipMode: ClipMode = 'smart',
-  skipBoundaryClip: boolean = false,
+  target: Target,
+  spatialFrame: SpatialFrame = 'division',
+  spatialPredicate: SpatialPredicate = 'intersects',
+  spatialGeometry: SpatialGeometryMode = 'clip-smart',
 ): string {
-  if (skipBoundaryClip) {
-    return `${featureType}.bboxCrop.parquet`
+  if (target === 'world') {
+    return `${featureType}.parquet`
   }
 
-  if (clipMode === 'preserve') {
-    return `${featureType}.preserveCrop.parquet`
-  }
+  const geometrySuffix =
+    spatialGeometry === 'clip-smart'
+      ? 'clipSmart'
+      : spatialGeometry === 'clip-all'
+        ? 'clipAll'
+        : 'preserve'
 
-  if (clipMode === 'all') {
-    return `${featureType}.containCrop.parquet`
-  }
-
-  return `${featureType}.parquet`
+  return `${featureType}.${spatialFrame}.${spatialPredicate}.${geometrySuffix}.parquet`
 }
 
 /**
@@ -229,8 +243,10 @@ export async function ensureVersionedCacheDir(
  * @param interactiveOpts - Interactive options when prompts are enabled
  * @param featureTypes - Feature types scheduled for output
  * @param outputDir - Output directory for the current run
- * @param clipMode - Active clip mode used to resolve output filenames
- * @param skipBoundaryClip - Whether the run skips geometry clipping and should treat bbox-only outputs as distinct files
+ * @param target - Selected extraction target
+ * @param spatialFrame - Active spatial frame used to resolve output filenames
+ * @param spatialPredicate - Active spatial predicate used to resolve output filenames
+ * @param spatialGeometry - Active spatial geometry used to resolve output filenames
  * @returns Promise resolving to the selected existing-file strategy
  */
 export async function initializeFileHandling(
@@ -239,8 +255,10 @@ export async function initializeFileHandling(
   interactiveOpts: InteractiveOptions | false | undefined,
   featureTypes: string[],
   outputDir: string,
-  clipMode: ClipMode = 'smart',
-  skipBoundaryClip: boolean = false,
+  target: Target,
+  spatialFrame: SpatialFrame = 'division',
+  spatialPredicate: SpatialPredicate = 'intersects',
+  spatialGeometry: SpatialGeometryMode = 'clip-smart',
 ): Promise<{
   onFileExists: OnExistingFilesAction | null
 }> {
@@ -248,8 +266,10 @@ export async function initializeFileHandling(
   const existingFiles = await checkForExistingFiles(
     featureTypes,
     outputDir,
-    clipMode,
-    skipBoundaryClip,
+    target,
+    spatialFrame,
+    spatialPredicate,
+    spatialGeometry,
   )
   const onFileExists = await determineActionOnExistingFiles(
     existingFiles,
@@ -354,19 +374,29 @@ export async function fileExists(filePath: string): Promise<boolean> {
  * Checks if a Parquet file exists for a given version and feature type.
  * @param outputDir - Directory that should contain the Parquet file
  * @param featureType - The feature type to check for
- * @param clipMode - Active clip mode used to derive the expected filename
- * @param skipBoundaryClip - Whether the run skips geometry clipping and should use bbox-only filenames
+ * @param target - Selected extraction target
+ * @param spatialFrame - Active spatial frame used to derive the expected filename
+ * @param spatialPredicate - Active spatial predicate used to derive the expected filename
+ * @param spatialGeometry - Active spatial geometry used to derive the expected filename
  * @returns Promise resolving to true if the Parquet file exists
  */
 export async function isParquetExists(
   outputDir: string,
   featureType: string,
-  clipMode: ClipMode = 'smart',
-  skipBoundaryClip: boolean = false,
+  target: Target,
+  spatialFrame: SpatialFrame = 'division',
+  spatialPredicate: SpatialPredicate = 'intersects',
+  spatialGeometry: SpatialGeometryMode = 'clip-smart',
 ): Promise<boolean> {
   const parquetFile = path.join(
     outputDir,
-    getFeatureOutputFilename(featureType, clipMode, skipBoundaryClip),
+    getFeatureOutputFilename(
+      featureType,
+      target,
+      spatialFrame,
+      spatialPredicate,
+      spatialGeometry,
+    ),
   )
 
   return await fileExists(parquetFile)

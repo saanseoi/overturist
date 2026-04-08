@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { afterEach, beforeEach, describe, mock, test } from 'bun:test'
-import type { Config, ControlContext, Division, ProgressUpdate } from '../libs/core'
+import type { Config, ControlContext, Division } from '../libs/core'
 
 const abs = (relativePath: string) => new URL(relativePath, import.meta.url).pathname
 
@@ -43,12 +43,14 @@ function createCtx(overrides: Partial<ControlContext> = {}): ControlContext {
         releaseUrl: 'https://docs.overturemaps.org/release-calendar/',
         target: 'division',
         confirmFeatureSelection: true,
-        clipMode: 'preserve',
+        spatialFrame: 'division',
+        spatialPredicate: 'intersects',
+        spatialGeometry: 'preserve',
       } satisfies Config,
-      cliArgs: {
+      cli: {
         onFileExists: 'skip',
       },
-      interactiveOpts: false,
+      interactive: false,
     },
     releaseVersion: '2026-03-18.0',
     releaseContext: {
@@ -64,8 +66,13 @@ function createCtx(overrides: Partial<ControlContext> = {}): ControlContext {
     divisionId: 'gers:division',
     division: createDivision('gers:division'),
     featureTypes: ['building'],
-    clipMode: 'preserve',
+    spatialFrame: 'division',
+    spatialPredicate: 'intersects',
+    spatialGeometry: 'preserve',
     onFileExists: 'skip',
+    featureNameWidth: 12,
+    indexWidth: 2,
+    outputDir: '/tmp/output',
     ...overrides,
   }
 }
@@ -90,32 +97,28 @@ async function loadQueriesModule() {
   mock.module(abs('../libs/core/fs.ts'), () => ({
     getFeatureOutputFilename: (
       featureType: string,
-      clipMode: string,
-      skipBoundaryClip?: boolean,
+      target: string,
+      spatialFrame?: string,
+      spatialPredicate?: string,
+      spatialGeometry?: string,
     ) =>
-      skipBoundaryClip
-        ? `${featureType}.bboxCrop.parquet`
-        : clipMode === 'preserve'
-          ? `${featureType}.preserveCrop.parquet`
-          : clipMode === 'all'
-            ? `${featureType}.containCrop.parquet`
-            : `${featureType}.parquet`,
+      target === 'world'
+        ? `${featureType}.parquet`
+        : `${featureType}.${spatialFrame}.${spatialPredicate}.${spatialGeometry}.parquet`,
     getOutputDir: getOutputDirMock,
     isParquetExists: isParquetExistsMock,
   }))
   mock.module(abs('../libs/core/fs'), () => ({
     getFeatureOutputFilename: (
       featureType: string,
-      clipMode: string,
-      skipBoundaryClip?: boolean,
+      target: string,
+      spatialFrame?: string,
+      spatialPredicate?: string,
+      spatialGeometry?: string,
     ) =>
-      skipBoundaryClip
-        ? `${featureType}.bboxCrop.parquet`
-        : clipMode === 'preserve'
-          ? `${featureType}.preserveCrop.parquet`
-          : clipMode === 'all'
-            ? `${featureType}.containCrop.parquet`
-            : `${featureType}.parquet`,
+      target === 'world'
+        ? `${featureType}.parquet`
+        : `${featureType}.${spatialFrame}.${spatialPredicate}.${spatialGeometry}.parquet`,
     getOutputDir: getOutputDirMock,
     isParquetExists: isParquetExistsMock,
   }))
@@ -290,18 +293,28 @@ describe('count helpers', () => {
     assert.equal(await getLastReleaseCount(createCtx(), 'building'), null)
   })
 
-  test('uses bbox-only filenames for previous release lookups when boundary clipping is skipped', async () => {
+  test('uses the resolved spatial filename for previous release lookups', async () => {
     const { getLastReleaseCount } = await loadQueriesModule()
 
     isParquetExistsMock.mockImplementation(async () => false)
 
-    await getLastReleaseCount(createCtx({ skipBoundaryClip: true }), 'building')
+    await getLastReleaseCount(
+      createCtx({
+        target: 'bbox',
+        spatialFrame: 'bbox',
+        spatialPredicate: 'within',
+        spatialGeometry: 'preserve',
+      }),
+      'building',
+    )
 
     assert.deepEqual(isParquetExistsMock.mock.calls[0], [
       '/tmp/previous-release',
       'building',
+      'bbox',
+      'bbox',
+      'within',
       'preserve',
-      true,
     ])
   })
 })
@@ -407,56 +420,19 @@ describe('division search queries', () => {
 })
 
 describe('feature extraction queries', () => {
-  test('requires bbox for bbox filtering', async () => {
-    const { getFeaturesForBbox } = await loadQueriesModule()
+  test('requires bbox for spatial filtering', async () => {
+    const { getFeaturesForSpatialWithConnection } = await loadQueriesModule()
+    const connection = createConnection([0])
 
     await assert.rejects(
-      getFeaturesForBbox(
+      getFeaturesForSpatialWithConnection(
+        connection as never,
         createCtx({ bbox: null }),
         'building',
         'buildings',
         '/tmp/out.parquet',
       ),
       /Bbox is required/,
-    )
-  })
-
-  test('returns counts for bbox extraction success and failure states', async () => {
-    const { getFeaturesForBbox } = await loadQueriesModule()
-    const updates: ProgressUpdate[] = []
-    runDuckDBQueryMock.mockImplementation(async () => ({
-      stdout: JSON.stringify([{ count: 5 }]),
-      stderr: '',
-      exitCode: 0,
-    }))
-
-    assert.deepEqual(
-      await getFeaturesForBbox(
-        createCtx(),
-        'building',
-        'buildings',
-        '/tmp/out.parquet',
-        update => {
-          updates.push(update)
-        },
-      ),
-      { success: true, count: 5 },
-    )
-    assert.equal(updates.at(-1)?.count, 5)
-
-    runDuckDBQueryMock.mockImplementation(async () => ({
-      stdout: '',
-      stderr: 'failed',
-      exitCode: 1,
-    }))
-    assert.deepEqual(
-      await getFeaturesForBbox(
-        createCtx(),
-        'building',
-        'buildings',
-        '/tmp/out.parquet',
-      ),
-      { success: false, count: 0 },
     )
   })
 
@@ -495,10 +471,10 @@ describe('feature extraction queries', () => {
   })
 
   test('creates an empty output when the bbox pass finds no features', async () => {
-    const { getFeaturesForGeomWithConnection } = await loadQueriesModule()
+    const { getFeaturesForSpatialWithConnection } = await loadQueriesModule()
     const connection = createConnection([0])
 
-    const result = await getFeaturesForGeomWithConnection(
+    const result = await getFeaturesForSpatialWithConnection(
       connection as never,
       createCtx(),
       'building',
@@ -513,13 +489,13 @@ describe('feature extraction queries', () => {
     )
   })
 
-  test('clips geometry for clipMode=all', async () => {
-    const { getFeaturesForGeomWithConnection } = await loadQueriesModule()
+  test('clips geometry for geometry=clip-all', async () => {
+    const { getFeaturesForSpatialWithConnection } = await loadQueriesModule()
     const connection = createConnection([3, 2])
 
-    const result = await getFeaturesForGeomWithConnection(
+    const result = await getFeaturesForSpatialWithConnection(
       connection as never,
-      createCtx({ clipMode: 'all' }),
+      createCtx({ spatialGeometry: 'clip-all' }),
       'building',
       'buildings',
       '/tmp/final.parquet',
@@ -532,13 +508,13 @@ describe('feature extraction queries', () => {
     )
   })
 
-  test('clips only smart feature types for clipMode=smart', async () => {
-    const { getFeaturesForGeomWithConnection } = await loadQueriesModule()
+  test('clips only smart feature types for geometry=clip-smart', async () => {
+    const { getFeaturesForSpatialWithConnection } = await loadQueriesModule()
     const connection = createConnection([4, 3])
 
-    await getFeaturesForGeomWithConnection(
+    await getFeaturesForSpatialWithConnection(
       connection as never,
-      createCtx({ clipMode: 'smart' }),
+      createCtx({ spatialGeometry: 'clip-smart' }),
       'water',
       'base',
       '/tmp/final.parquet',
@@ -551,12 +527,12 @@ describe('feature extraction queries', () => {
   })
 
   test('preserves geometry when clipping is disabled', async () => {
-    const { getFeaturesForGeomWithConnection } = await loadQueriesModule()
+    const { getFeaturesForSpatialWithConnection } = await loadQueriesModule()
     const connection = createConnection([4, 3])
 
-    await getFeaturesForGeomWithConnection(
+    await getFeaturesForSpatialWithConnection(
       connection as never,
-      createCtx({ clipMode: 'preserve' }),
+      createCtx({ spatialGeometry: 'preserve' }),
       'building',
       'buildings',
       '/tmp/final.parquet',
@@ -564,7 +540,24 @@ describe('feature extraction queries', () => {
 
     const finalQuery = connection.queries.at(-2) ?? ''
     assert.equal(finalQuery.includes('ST_Intersection(geometry'), false)
-    assert.equal(finalQuery.includes('WHERE ST_INTERSECTS'), true)
+    assert.equal(finalQuery.includes('ST_Intersects'), true)
+  })
+
+  test('uses bbox-within prefilter when predicate=within', async () => {
+    const { getFeaturesForSpatialWithConnection } = await loadQueriesModule()
+    const connection = createConnection([4, 3])
+
+    await getFeaturesForSpatialWithConnection(
+      connection as never,
+      createCtx({ spatialFrame: 'bbox', spatialPredicate: 'within' }),
+      'building',
+      'buildings',
+      '/tmp/final.parquet',
+    )
+
+    const prefilterQuery = connection.queries[0] ?? ''
+    assert.equal(prefilterQuery.includes('bbox.xmin >='), true)
+    assert.equal(prefilterQuery.includes('bbox.xmax <='), true)
   })
 })
 

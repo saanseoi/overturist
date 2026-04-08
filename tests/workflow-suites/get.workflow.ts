@@ -16,9 +16,10 @@ const initializeLocaleMock = mock(() => ({ locale: 'en' }))
 const initializeTargetMock = mock(() => ({ target: 'division' as const }))
 const initializeBoundsMock = mock(async () => ({
   bbox: { xmin: 1, ymin: 2, xmax: 3, ymax: 4 },
-  skipBoundaryClip: false,
-  clipMode: 'preserve' as const,
   geometry: 'geom-hex',
+  spatialFrame: 'division' as const,
+  spatialPredicate: 'intersects' as const,
+  spatialGeometry: 'preserve' as const,
 }))
 const setupGracefulExitMock = mock(() => {})
 
@@ -163,8 +164,9 @@ function createControlContext(): ControlContext {
     division,
     bbox: { xmin: 1, ymin: 2, xmax: 3, ymax: 4 },
     geometry: 'geom-hex',
-    skipBoundaryClip: false,
-    clipMode: 'preserve',
+    spatialFrame: 'division',
+    spatialPredicate: 'intersects',
+    spatialGeometry: 'preserve',
     featureTypes: ['building'],
     featureNameWidth: 12,
     indexWidth: 2,
@@ -215,8 +217,9 @@ describe('resolveOptions', () => {
       division: createDivision('division-1'),
       bbox: { xmin: 1, ymin: 2, xmax: 3, ymax: 4 },
       geometry: 'geom-hex',
-      skipBoundaryClip: false,
-      clipMode: 'preserve',
+      spatialFrame: 'division',
+      spatialPredicate: 'intersects',
+      spatialGeometry: 'preserve',
       featureTypes: ['building'],
       featureNameWidth: 12,
       indexWidth: 2,
@@ -254,8 +257,10 @@ describe('resolveOptions', () => {
       false,
       ['building'],
       '/tmp/output',
+      'division',
+      'division',
+      'intersects',
       'preserve',
-      false,
     ])
   })
 })

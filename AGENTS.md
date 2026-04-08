@@ -64,13 +64,12 @@ Configuration is handled through:
 
 ### Output Structure
 
-Data is organized as: `./data/{release_version}/{hierarchy...}/{feature_type}[.{clipSuffix}].parquet`
+Data is organized as: `./data/{release_version}/{hierarchy...}/{feature_type}[.{spatialSuffix}].parquet`
 
-Clip-mode-specific filenames are required so different geometry clipping strategies never collide:
+Spatially specific filenames are required so different frame, predicate, and geometry strategies never collide:
 
-- `smart` -> `{featureType}.parquet`
-- `preserve` -> `{featureType}.preserveCrop.parquet`
-- `all` -> `{featureType}.containCrop.parquet`
+- `world` -> `{featureType}.parquet`
+- bounded outputs -> `{featureType}.{frame}.{predicate}.{geometry}.parquet`
 
 The tool maintains a `releases.json` file with cached release metadata and provides diff calculations between consecutive releases.
 
@@ -92,11 +91,11 @@ The tool maintains a `releases.json` file with cached release metadata and provi
 ## Testing Guidelines
 Use `bun run test`, `bun run typecheck`, and `bun run check` for routine validation. Then smoke-test the affected CLI path, for example `bun overturist.ts --help` or a scoped `get` command against a known division. Place unit tests under `tests/` unless a module-local test is clearer.
 
-When changing output semantics, cache layout, clip mode behavior, or file naming:
+When changing output semantics, cache layout, spatial filtering behavior, or file naming:
 
 - Add or update tests for the low-level helper that constructs filenames or paths.
 - Add or update at least one workflow-facing test that proves skip/replace/existing-file behavior still uses the same naming rule.
-- Treat clip-mode changes as output-shape changes. A new clip mode or changed clipping semantics must not reuse an old filename silently.
+- Treat frame, predicate, and geometry changes as output-shape changes. A changed spatial mode must not reuse an old filename silently.
 - Prefer targeted test runs while iterating, but finish with the narrowest high-signal suite that covers the touched workflow plus `bun run typecheck`.
 
 ## Commit & Pull Request Guidelines

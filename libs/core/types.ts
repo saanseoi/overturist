@@ -59,7 +59,9 @@ export type DivisionBoundary = {
  */
 
 export type Target = 'division' | 'bbox' | 'world'
-export type ClipMode = 'preserve' | 'smart' | 'all'
+export type SpatialFrame = 'division' | 'bbox'
+export type SpatialPredicate = 'intersects' | 'within'
+export type SpatialGeometryMode = 'preserve' | 'clip-smart' | 'clip-all'
 
 export type Config = {
   locale: string
@@ -71,8 +73,9 @@ export type Config = {
   divisionId?: GERS
   releaseVersion?: Version
   selectedDivision?: Division
-  skipBoundaryClip?: boolean
-  clipMode?: ClipMode
+  spatialFrame?: SpatialFrame
+  spatialPredicate?: SpatialPredicate
+  spatialGeometry?: SpatialGeometryMode
   featureTypes?: string[]
   confirmFeatureSelection: boolean
   onFileExists?: OnExistingFilesAction
@@ -221,8 +224,9 @@ export interface CliArgs {
   releaseVersion?: Version
   examples?: boolean
   bbox?: BBox
-  skipBoundaryClip?: boolean
-  clipMode?: ClipMode
+  frame?: SpatialFrame
+  predicate?: SpatialPredicate
+  geometry?: SpatialGeometryMode
   world?: boolean
   locale?: string
   get?: boolean
@@ -235,7 +239,6 @@ export type ParsedArgs = {
   info?: boolean
   help?: boolean
   examples?: boolean
-  'skip-bc'?: boolean
   world?: boolean
   skip?: boolean
   replace?: boolean
@@ -251,7 +254,9 @@ export type ParsedArgs = {
   release?: string
   bbox?: string
   locale?: string
-  'clip-mode'?: ClipMode
+  frame?: SpatialFrame
+  predicate?: SpatialPredicate
+  geometry?: SpatialGeometryMode
 }
 
 /**
@@ -266,8 +271,6 @@ export interface OptionConfig {
 
 export interface InteractiveOptions {
   releaseVersion?: string | null
-  skipBoundaryClip?: boolean
-  clipMode?: ClipMode
   target?: Target
   divisionLookupMode?: 'name' | 'osm'
   selectedDivision?: Division
@@ -285,8 +288,9 @@ export interface ControlContext {
   division: Division | null
   bbox: BBox | null
   geometry: Geometry | null // Hex-encoded WKB binary
-  skipBoundaryClip: boolean
-  clipMode: ClipMode
+  spatialFrame: SpatialFrame
+  spatialPredicate: SpatialPredicate
+  spatialGeometry: SpatialGeometryMode
   featureTypes: string[]
   featureNameWidth: number
   indexWidth: number

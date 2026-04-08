@@ -7,11 +7,11 @@ import { runDuckDBQuery } from './db'
 import { getFeatureOutputFilename, getOutputDir, isParquetExists } from '../core/fs'
 import type {
   BBox,
-  ClipMode,
   ControlContext,
   Division,
   GERS,
   ProgressUpdate,
+  SpatialGeometryMode,
   Version,
 } from '../core/types'
 import { bail } from '../core/utils'
@@ -60,21 +60,33 @@ const SMART_CLIP_FEATURE_TYPES = new Set([
 ])
 
 /**
- * Decides whether a feature type should have its geometry clipped to the boundary.
+ * Decides whether a feature type should have its geometry clipped to the frame.
  * @param featureType - Feature type currently being processed
- * @param clipMode - Active boundary clip mode
+ * @param geometryMode - Active spatial geometry mode
  * @returns True when the geometry should be modified via intersection
  */
-function shouldClipFeatureGeometry(featureType: string, clipMode: ClipMode): boolean {
-  if (clipMode === 'all') {
+function shouldClipFeatureGeometry(
+  featureType: string,
+  geometryMode: SpatialGeometryMode,
+): boolean {
+  if (geometryMode === 'clip-all') {
     return true
   }
 
-  if (clipMode === 'smart') {
+  if (geometryMode === 'clip-smart') {
     return SMART_CLIP_FEATURE_TYPES.has(featureType)
   }
 
   return false
+}
+
+/**
+ * Reports whether the resolved context requires an exact spatial-filter stage after bbox prefiltering.
+ * @param ctx - Active control context
+ * @returns True when the run should execute the exact geometry predicate
+ */
+export function requiresExactSpatialFilter(ctx: ControlContext): boolean {
+  return ctx.target !== 'world'
 }
 
 /**
@@ -368,14 +380,22 @@ export async function getLastReleaseCount(
       const fileExists = await isParquetExists(
         previousVersionOutputDir,
         featureType,
-        ctx.clipMode,
-        ctx.skipBoundaryClip,
+        ctx.target,
+        ctx.spatialFrame,
+        ctx.spatialPredicate,
+        ctx.spatialGeometry,
       )
 
       if (fileExists) {
         const previousFile = path.join(
           previousVersionOutputDir,
-          getFeatureOutputFilename(featureType, ctx.clipMode, ctx.skipBoundaryClip),
+          getFeatureOutputFilename(
+            featureType,
+            ctx.target,
+            ctx.spatialFrame,
+            ctx.spatialPredicate,
+            ctx.spatialGeometry,
+          ),
         )
         return await getCount(previousFile)
       }
@@ -613,65 +633,44 @@ export async function getDivisionsBySourceRecordId(
  */
 
 /**
- * Extracts features for a bounding box from S3 and saves to the output file.
- * Used when target is 'bbox' or when the division boundary filter is skipped.
- * @param ctx - Control context containing release and bbox settings
- * @param featureType - The feature type to extract
- * @param theme - The theme for the feature type
- * @param outputFile - Path to save the final output file
- * @param progressCallback - Optional callback for progress updates
- * @returns Promise resolving to success status and feature count
+ * Builds the fast bbox prefilter predicate used before exact spatial filtering.
+ * @param bbox - Bbox envelope of the active frame
+ * @param predicate - Exact predicate selected for the run
+ * @returns SQL fragment for broad-phase feature bbox filtering
  */
-export async function getFeaturesForBbox(
-  ctx: ControlContext,
-  featureType: string,
-  theme: string,
-  outputFile: string,
-  progressCallback?: (update: ProgressUpdate) => void,
-): Promise<{ success: boolean; count: number }> {
-  const s3Path = `'s3://overturemaps-us-west-2/release/${ctx.releaseVersion}/theme=${theme}/type=${featureType}/*.parquet'`
-
+function buildPrefilterWhereClause(ctx: ControlContext): string {
   if (!ctx.bbox) {
-    bail('Bbox is required')
+    bail('Bbox is required for spatial filtering')
   }
 
-  // Materialize bbox-filtered features once so the output copy and count share the same snapshot.
-  const bboxQuery = `
-       ${DUCK_DB_REMOTE_SETUP}
+  if (ctx.spatialPredicate === 'within') {
+    return `
+      bbox.xmin >= ${ctx.bbox.xmin}
+      AND bbox.xmax <= ${ctx.bbox.xmax}
+      AND bbox.ymin >= ${ctx.bbox.ymin}
+      AND bbox.ymax <= ${ctx.bbox.ymax}
+    `
+  }
 
-       CREATE TEMP TABLE bbox_features AS
-           SELECT * FROM read_parquet(${s3Path})
-           WHERE bbox.xmin >= ${ctx.bbox.xmin} AND bbox.xmax <= ${ctx.bbox.xmax}
-             AND bbox.ymin >= ${ctx.bbox.ymin} AND bbox.ymax <= ${ctx.bbox.ymax};
-
-       COPY bbox_features TO '${outputFile}' (FORMAT PARQUET, COMPRESSION 'ZSTD');
-
-       SELECT COUNT(*) as count FROM bbox_features;
+  return `
+    bbox.xmin < ${ctx.bbox.xmax}
+    AND bbox.xmax > ${ctx.bbox.xmin}
+    AND bbox.ymin < ${ctx.bbox.ymax}
+    AND bbox.ymax > ${ctx.bbox.ymin}
   `
+}
 
-  try {
-    progressCallback?.({
-      stage: 'bbox',
-      message: `${kleur.white('Obtaining every')} ${kleur.magenta(featureType)} ${kleur.white('feature within the')} ${kleur.cyan('bbox')}`,
-    })
-
-    const result = await runDuckDBQuery(bboxQuery, {
-      progressCallback: () => progressCallback?.({ stage: 'bbox' }),
-    })
-
-    if (result.exitCode === 0 && result.stdout) {
-      const count = JSON.parse(result.stdout)[0].count
-      progressCallback?.({
-        stage: 'bbox',
-        count,
-      })
-      return { success: true, count }
-    } else {
-      return { success: false, count: 0 }
-    }
-  } catch (_error) {
-    return { success: false, count: 0 }
+/**
+ * Builds the exact geometry predicate applied to candidates that pass the bbox prefilter.
+ * @param ctx - Active control context
+ * @returns SQL fragment for the exact geometry predicate
+ */
+function buildExactPredicate(ctx: ControlContext): string {
+  if (ctx.spatialPredicate === 'within') {
+    return `ST_Within(geometry, (SELECT geom FROM frame_geom))`
   }
+
+  return `ST_Intersects((SELECT geom FROM frame_geom), geometry)`
 }
 
 /**
@@ -729,17 +728,17 @@ export async function getFeaturesForWorld(
 }
 
 /**
- * Filters features by geometry using division boundaries after initial bbox filtering.
- * @param connection - Shared DuckDB connection with boundary geometry already prepared
- * @param ctx - Control context containing release, bbox, and division settings
+ * Filters features using the configured spatial frame, predicate, and geometry mode.
+ * @param connection - Shared DuckDB connection with frame geometry already prepared
+ * @param ctx - Control context containing release and spatial settings
  * @param featureType - The feature type being processed
  * @param theme - The theme for the feature type
  * @param outputFile - Path where filtered output should be written
  * @param progressCallback - Optional progress callback for both bbox and geometry steps
  * @returns Promise resolving to success status and the intermediate/final feature counts
- * @remarks This function assumes `boundary_geom` and bbox variables are already present on the connection.
+ * @remarks This function assumes `frame_geom` has already been created on the connection.
  */
-export async function getFeaturesForGeomWithConnection(
+export async function getFeaturesForSpatialWithConnection(
   connection: DuckDBConnection,
   ctx: ControlContext,
   featureType: string,
@@ -750,8 +749,8 @@ export async function getFeaturesForGeomWithConnection(
   const s3Path = `'s3://overturemaps-us-west-2/release/${ctx.releaseVersion}/theme=${theme}/type=${featureType}/*.parquet'`
   const cacheFile = await getTempCachePath(outputFile)
 
-  if (!ctx.bbox || !ctx.divisionId) {
-    bail('Bbox and division ID are required')
+  if (!ctx.bbox) {
+    bail('Bbox is required for spatial filtering')
   }
 
   try {
@@ -768,11 +767,7 @@ export async function getFeaturesForGeomWithConnection(
             COPY (
                 SELECT *
                 FROM read_parquet(${s3Path})
-                WHERE
-                    bbox.xmin < getvariable('xmax')
-                    AND bbox.xmax > getvariable('xmin')
-                    AND bbox.ymin < getvariable('ymax')
-                    AND bbox.ymax > getvariable('ymin')
+                WHERE ${buildPrefilterWhereClause(ctx)}
             ) TO '${cacheFile}' (FORMAT PARQUET, COMPRESSION 'ZSTD');
         `
 
@@ -793,18 +788,22 @@ export async function getFeaturesForGeomWithConnection(
         count: bboxCount,
       })
 
-      const clipFeatureGeometry = shouldClipFeatureGeometry(featureType, ctx.clipMode)
+      const clipFeatureGeometry = shouldClipFeatureGeometry(
+        featureType,
+        ctx.spatialGeometry,
+      )
+      const exactPredicate = buildExactPredicate(ctx)
 
-      // Preserve full features by default, or clip selected feature types to the boundary when configured.
+      // Preserve full features by default, or clip selected feature types to the frame when configured.
       const geomFilterQuery = clipFeatureGeometry
         ? `
                 COPY (
-                    WITH intersecting_features AS (
+                    WITH matching_features AS (
                         SELECT
                             *,
-                            ST_Intersection(geometry, (SELECT geom FROM boundary_geom)) AS clipped_geometry
+                            ST_Intersection(geometry, (SELECT geom FROM frame_geom)) AS clipped_geometry
                         FROM read_parquet('${cacheFile}')
-                        WHERE ST_INTERSECTS((SELECT geom FROM boundary_geom), geometry)
+                        WHERE ${exactPredicate}
                     )
                     SELECT
                         * EXCLUDE (clipped_geometry)
@@ -817,7 +816,7 @@ export async function getFeaturesForGeomWithConnection(
                                 ymax := ST_YMax(clipped_geometry)
                             ) AS bbox
                         )
-                    FROM intersecting_features
+                    FROM matching_features
                     WHERE clipped_geometry IS NOT NULL AND NOT ST_IsEmpty(clipped_geometry)
                 ) TO '${outputFile}' (FORMAT PARQUET, COMPRESSION 'ZSTD');
             `
@@ -825,7 +824,7 @@ export async function getFeaturesForGeomWithConnection(
                 COPY (
                     SELECT *
                     FROM read_parquet('${cacheFile}')
-                    WHERE ST_INTERSECTS((SELECT geom FROM boundary_geom), geometry)
+                    WHERE ${exactPredicate}
                 ) TO '${outputFile}' (FORMAT PARQUET, COMPRESSION 'ZSTD');
             `
 

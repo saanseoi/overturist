@@ -114,8 +114,9 @@ bun overturist.ts info [OPTIONS]
 | `--division`     | `-d`  | Filter results by division's boundaries using its stable Overture id           |
 | `--osmId`        | -     | Resolve the division from an OSM relation id                                   |
 | `--bbox`         | -     | Filter results by bounding box (e.g., -71.068,42.353,-71.058,42.363)           |
-| `--skip-bc`     | -     | Skip division boundary clipping and rely on bbox only                        |
-| `--clip-mode`   | -     | Choose `preserve`, `smart`, or `all` boundary clipping                       |
+| `--frame`        | -     | Exact spatial frame for filtering: `division` or `bbox`                       |
+| `--predicate`    | -     | Spatial predicate: `intersects` or `within`                                   |
+| `--geometry`     | -     | Output geometry mode: `preserve`, `clip-smart`, or `clip-all`                 |
 
 #### File Handling
 
@@ -172,11 +173,11 @@ bun overturist.ts get --division <id> --replace
 # Download within bounding box
 bun overturist.ts get --division <id> --bbox -71.068,42.353,-71.058,42.363
 
-# Skip the division boundary pass and rely on bbox intersection only
-bun overturist.ts get --division <id> --skip-bc
+# Use bbox as the exact frame and keep only features fully within it
+bun overturist.ts get --bbox -71.068,42.353,-71.058,42.363 --frame bbox --predicate within
 
-# Clip only large-area thematic geometries to the division boundary
-bun overturist.ts get --division <id> --clip-mode smart
+# Clip only selected large-area geometries to the active frame
+bun overturist.ts get --division <id> --geometry clip-smart
 
 # Complex example with multiple options
 bun overturist.ts get \
@@ -198,8 +199,9 @@ bun overturist.ts get --division <id> --theme buildings
 # Priority 2: Environment variables (.env file)
 # DIVISION_ID="b4f09a9f-4cba-4a7c-bf58-2e63bc2e913d"
 # FEATURE_TYPES="building,address"
-# CLIP_MODE="smart"
-# SKIP_BOUNDARY_CLIP=0
+# SPATIAL_FRAME="division"
+# SPATIAL_PREDICATE="intersects"
+# SPATIAL_GEOMETRY="clip-smart"
 # CONFIRM_FEATURE_SELECTION=true
 # ON_FILE_EXISTS="replace"
 
@@ -281,14 +283,16 @@ The `info` command saves a single division record as `division.json` inside the 
    - `--division`: Override division ID for the target region
    - `--osmId`: Resolve the target region from an OSM relation id
    - `--bbox`: Override bounding box coordinates (format: xmin,ymin,xmax,ymax)
-   - `--clip-mode`: Choose `preserve`, `smart`, or `all` boundary clipping
-   - `--skip-bc`: Skip the division boundary pass and rely on bbox filtering only
+   - `--frame`: Choose the exact spatial frame (`division` or `bbox`)
+   - `--predicate`: Choose the exact spatial predicate (`intersects` or `within`)
+   - `--geometry`: Choose the output geometry mode (`preserve`, `clip-smart`, or `clip-all`)
 
 2. **Environment variables** (via `.env` file):
    - `DIVISION_ID`: Overture Maps division ID for the target region
    - `BBOX_XMIN`, `BBOX_XMAX`, `BBOX_YMIN`, `BBOX_YMAX`: Bounding box coordinates (optional - can be set via interactive search)
-   - `CLIP_MODE`: Boundary clipping mode (`preserve`, `smart`, or `all`)
-   - `SKIP_BOUNDARY_CLIP`: Skip the division boundary pass and rely on bbox filtering only
+    - `SPATIAL_FRAME`: Exact spatial frame (`division` or `bbox`)
+    - `SPATIAL_PREDICATE`: Exact spatial predicate (`intersects` or `within`)
+    - `SPATIAL_GEOMETRY`: Output geometry mode (`preserve`, `clip-smart`, or `clip-all`)
 
 3. **Default settings** in `libs/config.ts`:
    - Output directory: `./data`

@@ -125,33 +125,44 @@ describe('getOutputDir', () => {
 })
 
 describe('filesystem helpers', () => {
-  test('builds clip-mode-aware parquet filenames', () => {
-    assert.equal(getFeatureOutputFilename('building', 'smart'), 'building.parquet')
+  test('builds spatially-aware parquet filenames', () => {
+    assert.equal(getFeatureOutputFilename('building', 'world'), 'building.parquet')
     assert.equal(
-      getFeatureOutputFilename('building', 'smart', true),
-      'building.bboxCrop.parquet',
+      getFeatureOutputFilename('building', 'bbox', 'bbox', 'within', 'preserve'),
+      'building.bbox.within.preserve.parquet',
     )
     assert.equal(
-      getFeatureOutputFilename('building', 'preserve'),
-      'building.preserveCrop.parquet',
-    )
-    assert.equal(
-      getFeatureOutputFilename('building', 'all'),
-      'building.containCrop.parquet',
+      getFeatureOutputFilename(
+        'building',
+        'division',
+        'division',
+        'intersects',
+        'clip-all',
+      ),
+      'building.division.intersects.clipAll.parquet',
     )
   })
 
   test('checks for existing parquet files by feature type', async () => {
     const outputDir = path.join(tempDir, 'existing-files')
     await ensureDirectoryExists(outputDir)
-    await fs.writeFile(path.join(outputDir, 'building.parquet'), '')
-    await fs.writeFile(path.join(outputDir, 'segment.containCrop.parquet'), '')
-    await fs.writeFile(path.join(outputDir, 'address.bboxCrop.parquet'), '')
+    await fs.writeFile(
+      path.join(outputDir, 'building.division.intersects.clipSmart.parquet'),
+      '',
+    )
+    await fs.writeFile(
+      path.join(outputDir, 'segment.division.intersects.clipAll.parquet'),
+      '',
+    )
+    await fs.writeFile(path.join(outputDir, 'address.bbox.within.preserve.parquet'), '')
 
     const existing = await checkForExistingFiles(
       ['building', 'address', 'segment'],
       outputDir,
-      'all',
+      'division',
+      'division',
+      'intersects',
+      'clip-all',
     )
 
     assert.deepEqual(existing, ['segment'])
@@ -159,8 +170,10 @@ describe('filesystem helpers', () => {
     const bboxOnlyExisting = await checkForExistingFiles(
       ['building', 'address', 'segment'],
       outputDir,
-      'smart',
-      true,
+      'bbox',
+      'bbox',
+      'within',
+      'preserve',
     )
 
     assert.deepEqual(bboxOnlyExisting, ['address'])
@@ -256,14 +269,50 @@ describe('filesystem helpers', () => {
     await ensureDirectoryExists(outputDir)
     const parquetFile = path.join(outputDir, 'building.parquet')
     await fs.writeFile(parquetFile, '')
-    await fs.writeFile(path.join(outputDir, 'address.preserveCrop.parquet'), '')
-    await fs.writeFile(path.join(outputDir, 'segment.bboxCrop.parquet'), '')
+    await fs.writeFile(
+      path.join(outputDir, 'address.division.intersects.preserve.parquet'),
+      '',
+    )
+    await fs.writeFile(path.join(outputDir, 'segment.bbox.within.preserve.parquet'), '')
 
     assert.equal(await fileExists(parquetFile), true)
     assert.equal(await fileExists(path.join(outputDir, 'missing.parquet')), false)
-    assert.equal(await isParquetExists(outputDir, 'building'), true)
-    assert.equal(await isParquetExists(outputDir, 'address'), false)
-    assert.equal(await isParquetExists(outputDir, 'address', 'preserve'), true)
-    assert.equal(await isParquetExists(outputDir, 'segment', 'smart', true), true)
+    assert.equal(
+      await isParquetExists(
+        outputDir,
+        'building',
+        'world',
+        'division',
+        'intersects',
+        'clip-smart',
+      ),
+      true,
+    )
+    assert.equal(
+      await isParquetExists(
+        outputDir,
+        'address',
+        'division',
+        'division',
+        'intersects',
+        'clip-smart',
+      ),
+      false,
+    )
+    assert.equal(
+      await isParquetExists(
+        outputDir,
+        'address',
+        'division',
+        'division',
+        'intersects',
+        'preserve',
+      ),
+      true,
+    )
+    assert.equal(
+      await isParquetExists(outputDir, 'segment', 'bbox', 'bbox', 'within', 'preserve'),
+      true,
+    )
   })
 })

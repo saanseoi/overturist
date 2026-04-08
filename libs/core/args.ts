@@ -1,6 +1,10 @@
 import { parse } from '@bomb.sh/args'
 import kleur from 'kleur'
-import { validateClipMode, validateTarget } from './config'
+import {
+  validateSpatialFrame,
+  validateSpatialGeometry,
+  validateSpatialPredicate,
+} from './config'
 import type {
   BBox,
   CliArgs,
@@ -10,6 +14,38 @@ import type {
 } from './types'
 import { displayBanner } from '../ui'
 import { successExit } from './utils'
+
+/**
+ * Renders enumerated CLI values so accepted inputs stand out from prose.
+ * @param values - Allowed literal values for a help description
+ * @returns Comma-separated, colorized values for terminal help output
+ */
+function renderValidValues(values: string[]): string {
+  return values.map(value => kleur.cyan(value)).join(kleur.grey(', '))
+}
+
+/**
+ * Resolves the display-time description for one help option.
+ * @param name - Canonical option name
+ * @param description - Static fallback description
+ * @returns Help text with any runtime color accents applied
+ */
+function getOptionDescription(name: string, description: string): string {
+  switch (name) {
+    case 'frame':
+      return `Spatial frame - ${renderValidValues(['bbox', 'division'])}`
+    case 'predicate':
+      return `Spatial predicate - ${renderValidValues(['intersects', 'within'])}`
+    case 'geometry':
+      return `Geometry output - ${renderValidValues([
+        'preserve',
+        'clip-smart',
+        'clip-all',
+      ])}`
+    default:
+      return description
+  }
+}
 
 const options: Record<string, OptionConfig> = {
   release: {
@@ -52,13 +88,18 @@ const options: Record<string, OptionConfig> = {
     boolean: false,
     group: 'Geospatial',
   },
-  'skip-bc': {
-    description: 'Skip division boundary clipping and rely on bbox only',
-    boolean: true,
+  frame: {
+    description: 'Spatial frame bbox, division',
+    boolean: false,
     group: 'Geospatial',
   },
-  'clip-mode': {
-    description: `Boundary clipping mode ${kleur.grey('preserve, smart, or all')}`,
+  predicate: {
+    description: 'Spatial predicate intersects, within',
+    boolean: false,
+    group: 'Geospatial',
+  },
+  geometry: {
+    description: 'Geometry output preserve, clip-smart, clip-all',
     boolean: false,
     group: 'Geospatial',
   },
@@ -98,7 +139,17 @@ const options: Record<string, OptionConfig> = {
 
 const argConfig = {
   boolean: Object.keys(options).filter(key => options[key]?.boolean),
-  string: ['theme', 'type', 'division', 'osmId', 'release', 'bbox', 'clip-mode'], // Add support for multiple values
+  string: [
+    'theme',
+    'type',
+    'division',
+    'osmId',
+    'release',
+    'bbox',
+    'frame',
+    'predicate',
+    'geometry',
+  ], // Add support for multiple values
   alias: Object.fromEntries(
     Object.entries(options)
       .filter(([, value]) => value.alias)
@@ -135,15 +186,18 @@ export function handleArguments(argv: string[] = process.argv): CliArgs {
   const osmId = parseStringArgument(parsedArgs.osmId)
   const releaseVersion = parseStringArgument(parsedArgs.release)
   const locale = parseStringArgument(parsedArgs.locale)
-  const clipModeArg = parseStringArgument(parsedArgs['clip-mode'])
-  const clipMode = clipModeArg ? validateClipMode(clipModeArg) : undefined
+  const frameArg = parseStringArgument(parsedArgs.frame)
+  const predicateArg = parseStringArgument(parsedArgs.predicate)
+  const geometryArg = parseStringArgument(parsedArgs.geometry)
+  const frame = frameArg ? validateSpatialFrame(frameArg) : undefined
+  const predicate = predicateArg ? validateSpatialPredicate(predicateArg) : undefined
+  const geometry = geometryArg ? validateSpatialGeometry(geometryArg) : undefined
 
   // Infer the target from explicit location flags.
   const divisionRequested = hasOption(argv, 'division', 'd')
   const osmIdRequested = hasOption(argv, 'osmId')
   const bboxRequested = hasOption(argv, 'bbox')
   const world = hasOption(argv, 'world')
-  const target = inferCliTarget(divisionRequested, osmIdRequested, bboxRequested, world)
 
   return {
     onFileExists,
@@ -156,8 +210,9 @@ export function handleArguments(argv: string[] = process.argv): CliArgs {
     bboxRequested,
     releaseVersion,
     bbox,
-    skipBoundaryClip: parsedArgs['skip-bc'],
-    clipMode,
+    frame,
+    predicate,
+    geometry,
     world,
     locale,
     get: isGetCommand(argv),
@@ -258,7 +313,10 @@ function displayHelp() {
       if (config.alias) {
         optionStr += `, -${config.alias}`
       }
-      console.log(kleur.green(optionStr.padEnd(20)) + kleur.white(config.description))
+      console.log(
+        kleur.green(optionStr.padEnd(20)) +
+          getOptionDescription(name, config.description),
+      )
     }
   }
 
@@ -344,14 +402,19 @@ export function displayExamples() {
             'All features will fall within this bounding box (west, south, east, north)',
         },
         {
-          command: '--skip-bc',
+          command: '--frame bbox',
           description:
-            'Skip boundary geometry and rely solely on bbox for results filtering',
+            'Use the provided bounding box as the exact spatial filter frame',
         },
         {
-          command: '--clip-mode smart',
+          command: '--predicate within',
           description:
-            'Clip only large-area feature geometries while preserving everything else intact',
+            'Keep only features fully contained by the selected spatial frame',
+        },
+        {
+          command: '--geometry clip-smart',
+          description:
+            'Clip only selected area-like feature geometries while preserving everything else intact',
         },
       ],
     },
@@ -605,35 +668,6 @@ function hasOption(argv: string[], optionName: string, alias?: string): boolean 
       (shortOption !== null &&
         (token === shortOption || token.startsWith(`${shortOption}=`))),
   )
-}
-
-/**
- * Infers the effective CLI target from explicit location flags.
- * @param divisionRequested - Whether `--division` was present
- * @param osmIdRequested - Whether `--osmId` was present
- * @param bboxRequested - Whether `--bbox` was present
- * @param world - Whether `--world` was present
- * @returns Explicit target override for the CLI invocation
- */
-function inferCliTarget(
-  divisionRequested: boolean,
-  osmIdRequested: boolean,
-  bboxRequested: boolean,
-  world: boolean,
-) {
-  if (divisionRequested || osmIdRequested) {
-    return 'division' as const
-  }
-
-  if (bboxRequested) {
-    return 'bbox' as const
-  }
-
-  if (world) {
-    return 'world' as const
-  }
-
-  return undefined
 }
 
 /**

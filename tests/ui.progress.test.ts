@@ -84,8 +84,9 @@ function createProgressState(overrides: Partial<ProgressState> = {}): ProgressSt
 function createContext(overrides: Partial<ControlContext> = {}): ControlContext {
   return {
     target: 'division',
-    clipMode: 'smart',
-    skipBoundaryClip: false,
+    spatialFrame: 'division',
+    spatialPredicate: 'intersects',
+    spatialGeometry: 'clip-smart',
     bbox: { xmin: 114.123456, ymin: 22.3, xmax: 114.4, ymax: 22 },
     outputDir: './data/out',
     releaseVersion: '2026-03-18.0',

@@ -44,6 +44,10 @@ const progressTableState: ProgressTableState = {
   spinnerTimer: null,
 }
 
+function hasExactSpatialPass(ctx: ControlContext): boolean {
+  return ctx.target !== 'world'
+}
+
 /**
  * Displays the extraction plan note for the current run.
  * @param ctx - Resolved control context
@@ -59,8 +63,9 @@ export function displayExtractionPlan(ctx: ControlContext): void {
     [
       `${kleur.bold('Release')}      ${kleur.bold(kleur.cyan(version))}${isLatest ? ` ${kleur.red('(latest)')}` : ''}`,
       `${kleur.bold('Schema')}       ${kleur.bold(kleur.cyan(schema))}${isNewSchema ? ` ${kleur.red('(new)')}` : ''}`,
-      `${kleur.bold('Target')}       ${kleur.bold(kleur.cyan(ctx.target))}${ctx.skipBoundaryClip ? ` ${kleur.red('(skipBoundaryClip)')}` : ''}`,
-      `${kleur.bold('Clip Mode')}    ${kleur.cyan(ctx.clipMode)}`,
+      `${kleur.bold('Frame')}        ${kleur.cyan(ctx.spatialFrame)}`,
+      `${kleur.bold('Predicate')}    ${kleur.cyan(ctx.spatialPredicate)}`,
+      `${kleur.bold('Geometry')}     ${kleur.cyan(ctx.spatialGeometry)}`,
       `${kleur.bold('BBox')}         ${kleur.cyan(bboxText)}`,
       `${kleur.bold('Output')}       ${kleur.cyan(outputDirText)}`,
     ].join('\n'),
@@ -86,7 +91,7 @@ export function displayTableHeader(ctx: ControlContext): void {
     const progress: ProgressState = {
       bboxComplete: false,
       geomComplete: false,
-      hasGeometryPass: ctx.target === 'division' && !ctx.skipBoundaryClip,
+      hasGeometryPass: hasExactSpatialPass(ctx),
       isProcessing: false,
       activeStage: null,
       featureCount: 0,
@@ -269,10 +274,7 @@ export async function handleSkippedFeature(
 
   const lastReleaseCount = await getLastReleaseCount(controlContext, featureType)
   const diffText = toDiffText(getDiffCount(existingCount, lastReleaseCount))
-  const geomState =
-    controlContext.target === 'division' && !controlContext.skipBoundaryClip
-      ? 'skipped'
-      : 'na'
+  const geomState = hasExactSpatialPass(controlContext) ? 'skipped' : 'na'
 
   const skippedProgress = buildProgressLine({
     featureType,

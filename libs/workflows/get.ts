@@ -53,14 +53,15 @@ export async function resolveOptions(
   )
 
   // Resolve clipping once target and division context are known.
-  const { bbox, skipBoundaryClip, clipMode, geometry } = await initializeBounds(
-    config,
-    cliArgs,
-    target,
-    division,
-    divisionId,
-    releaseVersion,
-  )
+  const { bbox, spatialFrame, spatialPredicate, spatialGeometry, geometry } =
+    await initializeBounds(
+      config,
+      cliArgs,
+      target,
+      division,
+      divisionId,
+      releaseVersion,
+    )
 
   // Build the versioned output path from the resolved target and bounds.
   const { outputDir } = await initializeOutputDir(
@@ -81,8 +82,10 @@ export async function resolveOptions(
     interactiveOpts,
     featureTypes,
     outputDir,
-    clipMode,
-    skipBoundaryClip,
+    target,
+    spatialFrame,
+    spatialPredicate,
+    spatialGeometry,
   )
 
   return {
@@ -94,8 +97,9 @@ export async function resolveOptions(
     division,
     bbox,
     geometry,
-    skipBoundaryClip,
-    clipMode,
+    spatialFrame,
+    spatialPredicate,
+    spatialGeometry,
     featureTypes,
     featureNameWidth,
     indexWidth,

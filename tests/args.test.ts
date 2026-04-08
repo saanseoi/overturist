@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'bun:test'
+import kleur from 'kleur'
 import { handleArguments } from '../libs/core'
 
 function withPatchedExit<T>(fn: () => T): {
@@ -24,6 +25,31 @@ function withPatchedExit<T>(fn: () => T): {
   }
 }
 
+function captureConsoleOutput<T>(fn: () => T): {
+  logs: string[]
+  error: unknown
+  exitCode: number | undefined
+} {
+  const originalLog = console.log
+  const logs: string[] = []
+
+  console.log = (...args: unknown[]) => {
+    logs.push(args.join(' '))
+  }
+
+  try {
+    const result = withPatchedExit(fn)
+
+    return {
+      logs,
+      error: result.error,
+      exitCode: result.exitCode,
+    }
+  } finally {
+    console.log = originalLog
+  }
+}
+
 describe('handleArguments', () => {
   test('parses repeatable and comma-separated values from argv', () => {
     const cliArgs = handleArguments([
@@ -40,9 +66,12 @@ describe('handleArguments', () => {
       'segment,address',
       '--locale',
       'zh-hk',
-      '--clip-mode',
-      'smart',
-      '--skip-bc',
+      '--frame',
+      'bbox',
+      '--predicate',
+      'within',
+      '--geometry',
+      'clip-smart',
       '--replace',
     ])
 
@@ -51,8 +80,9 @@ describe('handleArguments', () => {
     assert.deepEqual(cliArgs.themes, ['buildings', 'addresses', 'base'])
     assert.deepEqual(cliArgs.types, ['building', 'segment', 'address'])
     assert.equal(cliArgs.locale, 'zh-hk')
-    assert.equal(cliArgs.clipMode, 'smart')
-    assert.equal(cliArgs.skipBoundaryClip, true)
+    assert.equal(cliArgs.frame, 'bbox')
+    assert.equal(cliArgs.predicate, 'within')
+    assert.equal(cliArgs.geometry, 'clip-smart')
   })
 
   test('detects scripting mode only when get is the first positional argument', () => {
@@ -174,12 +204,59 @@ describe('handleArguments', () => {
     assert.match(String(result.error), /process\.exit:1/)
   })
 
-  test('exits for invalid clip mode values', () => {
+  test('exits for invalid geometry values', () => {
     const result = withPatchedExit(() =>
-      handleArguments(['bun', 'overturist.ts', 'get', '--clip-mode', 'none']),
+      handleArguments(['bun', 'overturist.ts', 'get', '--geometry', 'none']),
     )
 
     assert.equal(result.exitCode, 1)
     assert.match(String(result.error), /process\.exit:1/)
   })
+
+  test('renders geospatial help values in a distinct color', () => {
+    const originalEnabled = kleur.enabled
+    kleur.enabled = true
+
+    try {
+      const result = captureConsoleOutput(() =>
+        handleArguments(['bun', 'overturist.ts', '--help']),
+      )
+      const output = result.logs.join('\n')
+
+      assert.equal(result.exitCode, 0)
+      assert.match(String(result.error), /process\.exit:0/)
+      assert.match(
+        output,
+        new RegExp(
+          `Spatial frame ${escapeRegex(kleur.cyan('bbox'))}${escapeRegex(
+            kleur.grey(', '),
+          )}${escapeRegex(kleur.cyan('division'))}`,
+        ),
+      )
+      assert.match(
+        output,
+        new RegExp(
+          `Spatial predicate ${escapeRegex(
+            kleur.cyan('intersects'),
+          )}${escapeRegex(kleur.grey(', '))}${escapeRegex(kleur.cyan('within'))}`,
+        ),
+      )
+      assert.match(
+        output,
+        new RegExp(
+          `Geometry output ${escapeRegex(kleur.cyan('preserve'))}${escapeRegex(
+            kleur.grey(', '),
+          )}${escapeRegex(kleur.cyan('clip-smart'))}${escapeRegex(
+            kleur.grey(', '),
+          )}${escapeRegex(kleur.cyan('clip-all'))}`,
+        ),
+      )
+    } finally {
+      kleur.enabled = originalEnabled
+    }
+  })
 })
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}

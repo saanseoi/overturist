@@ -3,8 +3,10 @@ import { describe, test } from 'bun:test'
 import {
   getConfig,
   initializeLocale,
-  validateClipMode,
   validateBooleanConfig,
+  validateSpatialFrame,
+  validateSpatialGeometry,
+  validateSpatialPredicate,
   validateTargetConfig,
 } from '../libs/core'
 import type { CliArgs, Config } from '../libs/core'
@@ -80,28 +82,37 @@ describe('getConfig', () => {
     }
   })
 
-  test('reads CLIP_MODE and SKIP_BOUNDARY_CLIP from env', () => {
-    const originalClipMode = process.env.CLIP_MODE
-    const originalSkipBoundaryClip = process.env.SKIP_BOUNDARY_CLIP
-    process.env.CLIP_MODE = 'smart'
-    process.env.SKIP_BOUNDARY_CLIP = '1'
+  test('reads spatial controls from env', () => {
+    const originalFrame = process.env.SPATIAL_FRAME
+    const originalPredicate = process.env.SPATIAL_PREDICATE
+    const originalGeometry = process.env.SPATIAL_GEOMETRY
+    process.env.SPATIAL_FRAME = 'bbox'
+    process.env.SPATIAL_PREDICATE = 'within'
+    process.env.SPATIAL_GEOMETRY = 'clip-all'
 
     try {
       const config = getConfig()
 
-      assert.equal(config.clipMode, 'smart')
-      assert.equal(config.skipBoundaryClip, true)
+      assert.equal(config.spatialFrame, 'bbox')
+      assert.equal(config.spatialPredicate, 'within')
+      assert.equal(config.spatialGeometry, 'clip-all')
     } finally {
-      if (originalClipMode === undefined) {
-        delete process.env.CLIP_MODE
+      if (originalFrame === undefined) {
+        delete process.env.SPATIAL_FRAME
       } else {
-        process.env.CLIP_MODE = originalClipMode
+        process.env.SPATIAL_FRAME = originalFrame
       }
 
-      if (originalSkipBoundaryClip === undefined) {
-        delete process.env.SKIP_BOUNDARY_CLIP
+      if (originalPredicate === undefined) {
+        delete process.env.SPATIAL_PREDICATE
       } else {
-        process.env.SKIP_BOUNDARY_CLIP = originalSkipBoundaryClip
+        process.env.SPATIAL_PREDICATE = originalPredicate
+      }
+
+      if (originalGeometry === undefined) {
+        delete process.env.SPATIAL_GEOMETRY
+      } else {
+        process.env.SPATIAL_GEOMETRY = originalGeometry
       }
     }
   })
@@ -119,15 +130,17 @@ describe('validateBooleanConfig', () => {
   })
 })
 
-describe('validateClipMode', () => {
-  test('accepts supported clip modes', () => {
-    assert.equal(validateClipMode('preserve'), 'preserve')
-    assert.equal(validateClipMode('smart'), 'smart')
-    assert.equal(validateClipMode('all'), 'all')
+describe('spatial validators', () => {
+  test('accept supported spatial values', () => {
+    assert.equal(validateSpatialFrame('bbox'), 'bbox')
+    assert.equal(validateSpatialPredicate('within'), 'within')
+    assert.equal(validateSpatialGeometry('clip-all'), 'clip-all')
   })
 
-  test('falls back to preserve when clip mode is omitted', () => {
-    assert.equal(validateClipMode(undefined), 'smart')
+  test('fall back to defaults when values are omitted', () => {
+    assert.equal(validateSpatialFrame(undefined), 'division')
+    assert.equal(validateSpatialPredicate(undefined), 'intersects')
+    assert.equal(validateSpatialGeometry(undefined), 'clip-smart')
   })
 })
 

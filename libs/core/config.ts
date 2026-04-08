@@ -5,12 +5,14 @@ import { extractBoundsFromDivisionGeometry } from '../workflows/processing'
 import type {
   BBox,
   CliArgs,
-  ClipMode,
   Config,
   Division,
   Geometry,
   InteractiveOptions,
   OnExistingFilesAction,
+  SpatialFrame,
+  SpatialGeometryMode,
+  SpatialPredicate,
   Target,
   Version,
 } from './types'
@@ -25,8 +27,9 @@ const CONFIG: Config = {
   confirmFeatureSelection: true,
   bbox: undefined,
   divisionId: undefined,
-  skipBoundaryClip: undefined,
-  clipMode: 'smart',
+  spatialFrame: 'division',
+  spatialPredicate: 'intersects',
+  spatialGeometry: 'clip-smart',
   onFileExists: undefined,
 }
 /**
@@ -68,16 +71,21 @@ function applyEnvVars(config: Config): Config {
     updatedConfig.divisionId = process.env.DIVISION_ID
   }
 
-  // Apply boundary-filter environment variable.
-  if (process.env.SKIP_BOUNDARY_CLIP === '1') {
-    updatedConfig.skipBoundaryClip = true
-  } else if (process.env.SKIP_BOUNDARY_CLIP === '0') {
-    updatedConfig.skipBoundaryClip = false
+  // Apply spatial filtering controls when defined.
+  if (process.env.SPATIAL_FRAME) {
+    updatedConfig.spatialFrame = validateSpatialFrame(process.env.SPATIAL_FRAME)
   }
 
-  // Apply boundary clipping mode when defined.
-  if (process.env.CLIP_MODE) {
-    updatedConfig.clipMode = validateClipMode(process.env.CLIP_MODE)
+  if (process.env.SPATIAL_PREDICATE) {
+    updatedConfig.spatialPredicate = validateSpatialPredicate(
+      process.env.SPATIAL_PREDICATE,
+    )
+  }
+
+  if (process.env.SPATIAL_GEOMETRY) {
+    updatedConfig.spatialGeometry = validateSpatialGeometry(
+      process.env.SPATIAL_GEOMETRY,
+    )
   }
 
   // Apply featureTypes
@@ -143,22 +151,68 @@ export function validateOnFileExists(
 }
 
 /**
- * Validates the configured boundary clip mode.
- * @param clipMode - Raw clip mode from environment variables or CLI input
- * @returns Normalized clip mode
+ * Validates the configured spatial frame.
+ * @param frame - Raw frame from environment variables or CLI input
+ * @returns Normalized spatial frame
  */
-export function validateClipMode(clipMode: string | undefined): ClipMode {
-  const validClipModes: ClipMode[] = ['preserve', 'smart', 'all']
+export function validateSpatialFrame(frame: string | undefined): SpatialFrame {
+  const validFrames: SpatialFrame[] = ['division', 'bbox']
 
-  if (clipMode && !validClipModes.includes(clipMode as ClipMode)) {
+  if (frame && !validFrames.includes(frame as SpatialFrame)) {
     bail(
-      `Invalid CLIP_MODE: ${clipMode} ${kleur.grey(`- use ${validClipModes.join(', ')}`)}`,
+      `Invalid SPATIAL_FRAME: ${frame} ${kleur.grey(`- use ${validFrames.join(', ')}`)}`,
     )
-  } else if (clipMode && validClipModes.includes(clipMode as ClipMode)) {
-    return clipMode as ClipMode
+  } else if (frame && validFrames.includes(frame as SpatialFrame)) {
+    return frame as SpatialFrame
   }
 
-  return 'smart'
+  return 'division'
+}
+
+/**
+ * Validates the configured spatial predicate.
+ * @param predicate - Raw predicate from environment variables or CLI input
+ * @returns Normalized spatial predicate
+ */
+export function validateSpatialPredicate(
+  predicate: string | undefined,
+): SpatialPredicate {
+  const validPredicates: SpatialPredicate[] = ['intersects', 'within']
+
+  if (predicate && !validPredicates.includes(predicate as SpatialPredicate)) {
+    bail(
+      `Invalid SPATIAL_PREDICATE: ${predicate} ${kleur.grey(`- use ${validPredicates.join(', ')}`)}`,
+    )
+  } else if (predicate && validPredicates.includes(predicate as SpatialPredicate)) {
+    return predicate as SpatialPredicate
+  }
+
+  return 'intersects'
+}
+
+/**
+ * Validates the configured spatial geometry mode.
+ * @param geometry - Raw geometry mode from environment variables or CLI input
+ * @returns Normalized spatial geometry mode
+ */
+export function validateSpatialGeometry(
+  geometry: string | undefined,
+): SpatialGeometryMode {
+  const validGeometryModes: SpatialGeometryMode[] = [
+    'preserve',
+    'clip-smart',
+    'clip-all',
+  ]
+
+  if (geometry && !validGeometryModes.includes(geometry as SpatialGeometryMode)) {
+    bail(
+      `Invalid SPATIAL_GEOMETRY: ${geometry} ${kleur.grey(`- use ${validGeometryModes.join(', ')}`)}`,
+    )
+  } else if (geometry && validGeometryModes.includes(geometry as SpatialGeometryMode)) {
+    return geometry as SpatialGeometryMode
+  }
+
+  return 'clip-smart'
 }
 
 /**
@@ -233,7 +287,7 @@ function resolveRequestedTarget(
   cliArgs: CliArgs,
   interactiveOpts?: InteractiveOptions | false,
 ): Target {
-  if (interactiveOpts && interactiveOpts.target) {
+  if (interactiveOpts !== false && interactiveOpts?.target) {
     return interactiveOpts.target
   }
 
@@ -250,8 +304,22 @@ function resolveRequestedTarget(
     return 'bbox'
   }
 
+  if (cliArgs.frame === 'bbox' && (cliArgs.bbox || config.bbox)) {
+    return 'bbox'
+  }
+
   if (cliArgs.world) {
     return 'world'
+  }
+
+  if (
+    config.spatialFrame === 'bbox' &&
+    config.bbox &&
+    !config.divisionId &&
+    !cliArgs.divisionId &&
+    !cliArgs.osmId
+  ) {
+    return 'bbox'
   }
 
   return config.target
@@ -306,8 +374,9 @@ export async function initializeBounds(
   releaseVersion: Version,
 ): Promise<{
   bbox: BBox | null
-  skipBoundaryClip: boolean
-  clipMode: ClipMode
+  spatialFrame: SpatialFrame
+  spatialPredicate: SpatialPredicate
+  spatialGeometry: SpatialGeometryMode
   geometry: Geometry | null
 }> {
   // WORLD TARGET
@@ -315,47 +384,60 @@ export async function initializeBounds(
     // Download world geometry
     return {
       bbox: null,
-      skipBoundaryClip: true,
-      clipMode: validateClipMode(cliArgs.clipMode || config.clipMode),
+      spatialFrame: validateSpatialFrame(cliArgs.frame || config.spatialFrame),
+      spatialPredicate: validateSpatialPredicate(
+        cliArgs.predicate || config.spatialPredicate,
+      ),
+      spatialGeometry: validateSpatialGeometry(
+        cliArgs.geometry || config.spatialGeometry,
+      ),
       geometry: null,
     }
   }
-  // Determine clipping behavior based on config
-  const skipBoundaryClip = cliArgs.skipBoundaryClip || config.skipBoundaryClip || false
-  const clipMode = validateClipMode(cliArgs.clipMode || config.clipMode)
+  const spatialFrame = validateSpatialFrame(
+    cliArgs.frame || config.spatialFrame || target,
+  )
+  const spatialPredicate = validateSpatialPredicate(
+    cliArgs.predicate || config.spatialPredicate,
+  )
+  const spatialGeometry = validateSpatialGeometry(
+    cliArgs.geometry || config.spatialGeometry,
+  )
   const bbox = cliArgs.bbox || config.bbox
-  // BBOX MODE
-  if (target === 'bbox' && !bbox) {
-    bail('You must provide a bounding box if you are using the bbox target')
-  } else if (target === 'bbox' && bbox) {
-    // Download bbox geometry
+
+  if (spatialFrame === 'bbox' && !bbox) {
+    bail('You must provide a bounding box when using frame=bbox')
+  }
+
+  if (spatialFrame === 'bbox' && bbox) {
     return {
       bbox,
-      skipBoundaryClip: true,
-      clipMode,
       geometry: null,
-    }
-    // DIVISION TARGET
-  } else if (target === 'division' && !division) {
-    // This should never run
-    bail('You must provide a DivisionId if you are using the division target')
-  } else {
-    // Extract bounds from division geometry
-    const bounds = await extractBoundsFromDivisionGeometry(
-      releaseVersion,
-      division,
-      divisionId,
-    )
-    return {
-      bbox: bbox || bounds?.bbox || null,
-      geometry: skipBoundaryClip ? null : bounds?.geometry || null,
-      skipBoundaryClip: validateSkipBoundaryClip(skipBoundaryClip),
-      clipMode,
+      spatialFrame,
+      spatialPredicate,
+      spatialGeometry,
     }
   }
-}
 
-function validateSkipBoundaryClip(skipBoundaryClip: boolean): boolean {
-  // DEFAULT CASE
-  return skipBoundaryClip
+  if (target === 'division' && !division) {
+    // This should never run
+    bail('You must provide a DivisionId if you are using the division target')
+  }
+
+  // Extract bounds from division geometry
+  const bounds = await extractBoundsFromDivisionGeometry(
+    releaseVersion,
+    division,
+    divisionId,
+  )
+  if (!bounds?.bbox || !bounds.geometry) {
+    bail('Division frame requires valid division geometry and bbox')
+  }
+  return {
+    bbox: bbox || bounds?.bbox || null,
+    geometry: bounds.geometry,
+    spatialFrame,
+    spatialPredicate,
+    spatialGeometry,
+  }
 }

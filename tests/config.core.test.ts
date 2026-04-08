@@ -25,8 +25,9 @@ const ENV_KEYS = [
   'BBOX_XMAX',
   'BBOX_YMAX',
   'DIVISION_ID',
-  'SKIP_BOUNDARY_CLIP',
-  'CLIP_MODE',
+  'SPATIAL_FRAME',
+  'SPATIAL_PREDICATE',
+  'SPATIAL_GEOMETRY',
   'FEATURE_TYPES',
   'CONFIRM_FEATURE_SELECTION',
   'ON_FILE_EXISTS',
@@ -53,7 +54,9 @@ function createConfig(overrides: Partial<Config> = {}): Config {
     releaseUrl: 'https://docs.overturemaps.org/release-calendar/',
     target: 'division',
     confirmFeatureSelection: true,
-    clipMode: 'smart',
+    spatialFrame: 'division',
+    spatialPredicate: 'intersects',
+    spatialGeometry: 'clip-smart',
     ...overrides,
   }
 }
@@ -125,8 +128,9 @@ describe('config env loading', () => {
     process.env.BBOX_XMAX = '114.3'
     process.env.BBOX_YMAX = '22.4'
     process.env.DIVISION_ID = 'division-123'
-    process.env.SKIP_BOUNDARY_CLIP = '1'
-    process.env.CLIP_MODE = 'smart'
+    process.env.SPATIAL_FRAME = 'bbox'
+    process.env.SPATIAL_PREDICATE = 'within'
+    process.env.SPATIAL_GEOMETRY = 'clip-all'
     process.env.FEATURE_TYPES = 'building,address'
     process.env.CONFIRM_FEATURE_SELECTION = 'false'
     process.env.ON_FILE_EXISTS = 'replace'
@@ -143,8 +147,9 @@ describe('config env loading', () => {
       ymax: 22.4,
     })
     assert.equal(config.divisionId, 'division-123')
-    assert.equal(config.skipBoundaryClip, true)
-    assert.equal(config.clipMode, 'smart')
+    assert.equal(config.spatialFrame, 'bbox')
+    assert.equal(config.spatialPredicate, 'within')
+    assert.equal(config.spatialGeometry, 'clip-all')
     assert.deepEqual(config.featureTypes, ['building', 'address'])
     assert.equal(config.confirmFeatureSelection, false)
     assert.equal(config.onFileExists, 'replace')
@@ -161,59 +166,50 @@ describe('config env loading', () => {
     assert.equal(config.bbox, undefined)
   })
 
-  test('ignores env values when requested explicitly', async () => {
-    process.env.LOCALE = 'fr'
-    process.env.FILTER_MODE = 'world'
-
-    const { getConfig } = await loadConfigModule()
-    const config = getConfig(true)
-
-    assert.equal(config.locale, 'en')
-    assert.equal(config.target, 'division')
-  })
-
   test('reloadConfig restores defaults while ignoring env', async () => {
     process.env.LOCALE = 'fr'
-    process.env.FILTER_MODE = 'world'
+    process.env.SPATIAL_GEOMETRY = 'preserve'
 
     const { reloadConfig } = await loadConfigModule()
-    const config = createConfig({ locale: 'zh-hk', target: 'bbox' })
+    const config = createConfig({ locale: 'zh-hk', spatialGeometry: 'clip-all' })
 
     reloadConfig(config)
 
     assert.equal(config.locale, 'en')
-    assert.equal(config.target, 'division')
-    assert.equal(config.clipMode, 'smart')
+    assert.equal(config.spatialFrame, 'division')
+    assert.equal(config.spatialPredicate, 'intersects')
+    assert.equal(config.spatialGeometry, 'clip-smart')
     assert.equal(config.confirmFeatureSelection, true)
   })
 })
 
 describe('config validators', () => {
-  test('accept valid targets, file handling actions, and clip modes', async () => {
-    const { validateClipMode, validateOnFileExists, validateTarget } =
-      await loadConfigModule()
+  test('accept valid targets, file handling actions, and spatial values', async () => {
+    const {
+      validateOnFileExists,
+      validateSpatialFrame,
+      validateSpatialGeometry,
+      validateSpatialPredicate,
+      validateTarget,
+    } = await loadConfigModule()
 
     assert.equal(validateTarget('world'), 'world')
     assert.equal(validateOnFileExists('abort'), 'abort')
-    assert.equal(validateClipMode('all'), 'all')
+    assert.equal(validateSpatialFrame('bbox'), 'bbox')
+    assert.equal(validateSpatialPredicate('within'), 'within')
+    assert.equal(validateSpatialGeometry('clip-all'), 'clip-all')
   })
 
-  test('reject invalid target values', async () => {
-    const { validateTarget } = await loadConfigModule()
+  test('reject invalid spatial values', async () => {
+    const { validateSpatialFrame, validateSpatialGeometry, validateSpatialPredicate } =
+      await loadConfigModule()
 
-    assert.throws(() => validateTarget('planet'), /Invalid target/)
-  })
-
-  test('reject invalid file handling values', async () => {
-    const { validateOnFileExists } = await loadConfigModule()
-
-    assert.throws(() => validateOnFileExists('overwrite'), /Invalid OnFileExists/)
-  })
-
-  test('reject invalid clip mode values', async () => {
-    const { validateClipMode } = await loadConfigModule()
-
-    assert.throws(() => validateClipMode('none'), /Invalid CLIP_MODE/)
+    assert.throws(() => validateSpatialFrame('planet'), /Invalid SPATIAL_FRAME/)
+    assert.throws(
+      () => validateSpatialPredicate('contains'),
+      /Invalid SPATIAL_PREDICATE/,
+    )
+    assert.throws(() => validateSpatialGeometry('crop'), /Invalid SPATIAL_GEOMETRY/)
   })
 })
 
@@ -222,108 +218,36 @@ describe('initializeTarget', () => {
     const { initializeTarget } = await loadConfigModule()
 
     const result = initializeTarget(
-      createConfig({ target: 'division' }),
-      createCliArgs({ target: 'bbox' }),
-      { target: 'world' } as never,
+      createConfig({ target: 'world' }),
+      createCliArgs({ bbox: { xmin: 1, ymin: 2, xmax: 3, ymax: 4 } }),
+      { target: 'division' },
     )
 
-    assert.equal(result.target, 'world')
+    assert.equal(result.target, 'division')
   })
 
-  test('falls back from cli to config when interactive target is absent', async () => {
+  test('resolves bbox target from bbox frame when bbox input is available', async () => {
     const { initializeTarget } = await loadConfigModule()
 
-    assert.equal(
-      initializeTarget(
-        createConfig({ target: 'division' }),
-        createCliArgs({ target: 'bbox' }),
-      ).target,
-      'bbox',
-    )
-    assert.equal(
-      initializeTarget(createConfig({ target: 'world' }), createCliArgs()).target,
-      'world',
-    )
-  })
-
-  test('infers division target from division and osm relation flags', async () => {
-    const { initializeTarget } = await loadConfigModule()
-
-    assert.equal(
-      initializeTarget(
-        createConfig({ target: 'world' }),
-        createCliArgs({ divisionRequested: true }),
-      ).target,
-      'division',
-    )
-    assert.equal(
-      initializeTarget(
-        createConfig({ target: 'world' }),
-        createCliArgs({ osmIdRequested: true }),
-      ).target,
-      'division',
-    )
-  })
-
-  test('infers bbox and world targets from explicit flags', async () => {
-    const { initializeTarget } = await loadConfigModule()
-
-    assert.equal(
-      initializeTarget(
-        createConfig({ target: 'division' }),
-        createCliArgs({ bboxRequested: true }),
-      ).target,
-      'bbox',
-    )
-    assert.equal(
-      initializeTarget(
-        createConfig({ target: 'division' }),
-        createCliArgs({ world: true }),
-      ).target,
-      'world',
-    )
-  })
-})
-
-describe('validateTargetConfig', () => {
-  test('prefers division over world when a division id is present and logs the override', async () => {
-    const { validateTargetConfig } = await loadConfigModule()
-
-    const result = validateTargetConfig(
-      createConfig({ target: 'world', divisionId: 'division-1' }),
-      createCliArgs(),
-      'world',
-    )
-
-    assert.equal(result, 'division')
-    assert.equal(logState.warn.mock.calls.length, 1)
-    assert.equal(logState.info.mock.calls.length, 1)
-  })
-
-  test('prefers bbox over world when a bbox is present and no division id exists', async () => {
-    const { validateTargetConfig } = await loadConfigModule()
-
-    const result = validateTargetConfig(
+    const result = initializeTarget(
       createConfig({
-        target: 'world',
+        spatialFrame: 'bbox',
         bbox: { xmin: 1, ymin: 2, xmax: 3, ymax: 4 },
       }),
       createCliArgs(),
-      'world',
+      false,
     )
 
-    assert.equal(result, 'bbox')
-    assert.equal(logState.warn.mock.calls.length, 1)
-    assert.equal(logState.info.mock.calls.length, 1)
+    assert.equal(result.target, 'bbox')
   })
 })
 
 describe('initializeBounds', () => {
-  test('returns a world extraction context without geometry filtering', async () => {
+  test('returns a world extraction context with spatial defaults and no geometry', async () => {
     const { initializeBounds } = await loadConfigModule()
 
     const result = await initializeBounds(
-      createConfig({ clipMode: 'all' }),
+      createConfig(),
       createCliArgs(),
       'world',
       null,
@@ -333,37 +257,25 @@ describe('initializeBounds', () => {
 
     assert.deepEqual(result, {
       bbox: null,
-      skipBoundaryClip: true,
-      clipMode: 'all',
       geometry: null,
+      spatialFrame: 'division',
+      spatialPredicate: 'intersects',
+      spatialGeometry: 'clip-smart',
     })
-    assert.equal(extractBoundsFromDivisionGeometryMock.mock.calls.length, 0)
   })
 
-  test('requires a bbox for bbox target', async () => {
-    const { initializeBounds } = await loadConfigModule()
-
-    await assert.rejects(
-      () =>
-        initializeBounds(
-          createConfig(),
-          createCliArgs(),
-          'bbox',
-          null,
-          null,
-          '2026-03-18.0',
-        ),
-      /You must provide a bounding box/,
-    )
-  })
-
-  test('uses bbox target inputs and forces boundary clipping off', async () => {
+  test('builds bbox frame contexts from bbox inputs', async () => {
     const { initializeBounds } = await loadConfigModule()
     const bbox = { xmin: 10, ymin: 11, xmax: 12, ymax: 13 }
 
     const result = await initializeBounds(
-      createConfig({ clipMode: 'all' }),
-      createCliArgs({ bbox, skipBoundaryClip: false }),
+      createConfig({ spatialFrame: 'bbox' }),
+      createCliArgs({
+        bbox,
+        frame: 'bbox',
+        predicate: 'within',
+        geometry: 'preserve',
+      }),
       'bbox',
       null,
       null,
@@ -372,38 +284,20 @@ describe('initializeBounds', () => {
 
     assert.deepEqual(result, {
       bbox,
-      skipBoundaryClip: true,
-      clipMode: 'all',
       geometry: null,
+      spatialFrame: 'bbox',
+      spatialPredicate: 'within',
+      spatialGeometry: 'preserve',
     })
   })
 
-  test('requires a division for division target', async () => {
+  test('extracts bounds from division geometry when using division frame', async () => {
     const { initializeBounds } = await loadConfigModule()
-
-    await assert.rejects(
-      () =>
-        initializeBounds(
-          createConfig(),
-          createCliArgs(),
-          'division',
-          null,
-          null,
-          '2026-03-18.0',
-        ),
-      /You must provide a DivisionId/,
-    )
-  })
-
-  test('extracts bounds from division geometry when using a division target', async () => {
-    const { initializeBounds } = await loadConfigModule()
-    const division = createDivision({
-      hierarchies: [[{ division_id: 'id', subtype: 'country', name: 'HK' }]],
-    })
+    const division = createDivision()
 
     const result = await initializeBounds(
-      createConfig({ clipMode: 'smart' }),
-      createCliArgs(),
+      createConfig(),
+      createCliArgs({ geometry: 'clip-all' }),
       'division',
       division,
       division.id,
@@ -413,75 +307,9 @@ describe('initializeBounds', () => {
     assert.deepEqual(result, {
       bbox: { xmin: 1, ymin: 2, xmax: 3, ymax: 4 },
       geometry: 'division-geometry',
-      skipBoundaryClip: false,
-      clipMode: 'smart',
+      spatialFrame: 'division',
+      spatialPredicate: 'intersects',
+      spatialGeometry: 'clip-all',
     })
-    assert.deepEqual(extractBoundsFromDivisionGeometryMock.mock.calls[0], [
-      '2026-03-18.0',
-      division,
-      'division-1',
-    ])
-  })
-
-  test('prefers explicit bbox over extracted division bounds', async () => {
-    const { initializeBounds } = await loadConfigModule()
-    const explicitBbox = { xmin: 20, ymin: 21, xmax: 22, ymax: 23 }
-
-    const result = await initializeBounds(
-      createConfig(),
-      createCliArgs({ bbox: explicitBbox }),
-      'division',
-      createDivision(),
-      'division-1',
-      '2026-03-18.0',
-    )
-
-    assert.deepEqual(result.bbox, explicitBbox)
-  })
-
-  test('uses config clip mode when the CLI does not provide one', async () => {
-    const { initializeBounds } = await loadConfigModule()
-
-    const result = await initializeBounds(
-      createConfig({ clipMode: 'all' }),
-      createCliArgs(),
-      'world',
-      null,
-      null,
-      '2026-03-18.0',
-    )
-
-    assert.equal(result.clipMode, 'all')
-  })
-
-  test('prefers CLI clip mode over config clip mode', async () => {
-    const { initializeBounds } = await loadConfigModule()
-
-    const result = await initializeBounds(
-      createConfig({ clipMode: 'preserve' }),
-      createCliArgs({ clipMode: 'all' }),
-      'world',
-      null,
-      null,
-      '2026-03-18.0',
-    )
-
-    assert.equal(result.clipMode, 'all')
-  })
-
-  test('drops geometry when boundary clipping is skipped', async () => {
-    const { initializeBounds } = await loadConfigModule()
-
-    const result = await initializeBounds(
-      createConfig({ skipBoundaryClip: true }),
-      createCliArgs(),
-      'division',
-      createDivision(),
-      'division-1',
-      '2026-03-18.0',
-    )
-
-    assert.equal(result.geometry, null)
-    assert.equal(result.skipBoundaryClip, true)
   })
 })

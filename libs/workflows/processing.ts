@@ -16,8 +16,7 @@ import {
   getDivisionsByIds,
   getDivisionsByName,
   getDivisionsBySourceRecordId,
-  getFeaturesForBbox,
-  getFeaturesForGeomWithConnection,
+  getFeaturesForSpatialWithConnection,
   getFeaturesForWorld,
   getLastReleaseCount,
   localizeDivisionHierarchiesForRelease,
@@ -43,6 +42,10 @@ import {
 } from '../ui'
 import { bail, bailFromSpinner, getDiffCount } from '../core/utils'
 
+function hasExactSpatialPass(ctx: ControlContext): boolean {
+  return ctx.target !== 'world'
+}
+
 /**
  * FEATURES
  */
@@ -64,17 +67,15 @@ export async function processFeatureTypes(ctx: ControlContext) {
             SET enable_object_cache=true;
         `
     await connection.run(extensionQuery)
-    if (ctx.divisionId && ctx.bbox && ctx.geometry && !ctx.skipBoundaryClip) {
+    if (hasExactSpatialPass(ctx) && ctx.bbox) {
       const boundsQuery = `
-                -- Set the boundary variables directly from pre-computed values
-                SET variable xmin = ${ctx.bbox.xmin};
-                SET variable ymin = ${ctx.bbox.ymin};
-                SET variable xmax = ${ctx.bbox.xmax};
-                SET variable ymax = ${ctx.bbox.ymax};
-
-                -- Create temp table using ST_GeomFromHEXWKB for hex WKB geometry
-                CREATE TEMP TABLE boundary_geom AS
-                SELECT ST_GeomFromHEXWKB('${ctx.geometry}') AS geom;
+                -- Build the exact frame geometry once so every feature type shares the same mask.
+                CREATE OR REPLACE TEMP TABLE frame_geom AS
+                SELECT ${
+                  ctx.spatialFrame === 'bbox'
+                    ? `ST_MakeEnvelope(${ctx.bbox.xmin}, ${ctx.bbox.ymin}, ${ctx.bbox.xmax}, ${ctx.bbox.ymax})`
+                    : `ST_GeomFromHEXWKB('${ctx.geometry}')`
+                } AS geom;
             `
       await connection.run(boundsQuery)
     }
@@ -119,7 +120,7 @@ async function initProgressTracker(
   indexWidth: number,
 ) {
   const lastReleaseCount = await getLastReleaseCount(ctx, featureType)
-  const hasGeometryPass = ctx.target === 'division' && !ctx.skipBoundaryClip
+  const hasGeometryPass = hasExactSpatialPass(ctx)
   const progressSubject = formatProgressSubject(
     ctx.themeMapping[featureType],
     featureType,
@@ -297,73 +298,40 @@ async function runFeatureExtraction(
     return
   }
 
-  if (ctx.bbox && (target === 'bbox' || ctx.skipBoundaryClip)) {
-    const result = await getFeaturesForBbox(
-      ctx,
-      featureType,
-      ctx.themeMapping[featureType],
-      outputPath,
-      (update?: ProgressUpdate) =>
-        bboxProgressCallback(
-          update ?? {
-            stage: 'bbox',
-            message: `${kleur.white('Filtering')} ${kleur.cyan('bbox')} ${kleur.white('for')} ${progressSubject}`,
-          },
-        ),
-    )
-    updateProgressForCompletedFeature(
-      result,
-      progressState,
-      lastReleaseCount,
-      theme,
-      featureType,
-      'count',
-      'bbox',
-    )
-    return
+  if (!ctx.bbox) {
+    bail('❌ Spatial filtering requires Bbox')
+  }
+  if (!connection) {
+    bail('❌ Spatial filtering requires an active DuckDB connection')
   }
 
-  if (target === 'division') {
-    if (!ctx.divisionId) {
-      bail('❌ Division target requires DivisionId')
-    }
-    if (!ctx.bbox) {
-      bail('❌ Division target requires Bbox')
-    }
-    if (!connection) {
-      bail('❌ Division target requires an active DuckDB connection')
-    }
+  // Every bounded extraction path uses bbox prefiltering, exact spatial filtering, and optional clipping.
+  const result = await getFeaturesForSpatialWithConnection(
+    connection,
+    ctx,
+    featureType,
+    ctx.themeMapping[featureType],
+    outputPath,
+    (update: ProgressUpdate) => {
+      if (update.stage === 'geometry') {
+        geometryProgressCallback(update)
+        return
+      }
 
-    // Division extraction always performs bbox narrowing before geometry containment.
-    const result = await getFeaturesForGeomWithConnection(
-      connection,
-      ctx,
-      featureType,
-      ctx.themeMapping[featureType],
-      outputPath,
-      (update: ProgressUpdate) => {
-        if (update.stage === 'geometry') {
-          geometryProgressCallback(update)
-          return
-        }
+      bboxProgressCallback(update)
+    },
+  )
 
-        bboxProgressCallback(update)
-      },
-    )
-
-    updateProgressForCompletedFeature(
-      result,
-      progressState,
-      lastReleaseCount,
-      theme,
-      featureType,
-      'finalCount',
-      'geometry',
-    )
-    return
-  }
-
-  log.error(`❌ Unknown target: ${target}`)
+  updateProgressForCompletedFeature(
+    result,
+    progressState,
+    lastReleaseCount,
+    theme,
+    featureType,
+    'finalCount',
+    'geometry',
+  )
+  return
 }
 
 /**
@@ -385,7 +353,13 @@ async function processFeatureType(
 
   const outputPath = path.join(
     ctx.outputDir,
-    getFeatureOutputFilename(featureType, ctx.clipMode, ctx.skipBoundaryClip),
+    getFeatureOutputFilename(
+      featureType,
+      ctx.target,
+      ctx.spatialFrame,
+      ctx.spatialPredicate,
+      ctx.spatialGeometry,
+    ),
   )
 
   const outputFileExists = await fileExists(outputPath)
@@ -866,7 +840,13 @@ export async function downloadFullDataset(ctx: ControlContext): Promise<void> {
       const progress = `(${index + 1}/${featureTypes.length})`
       const outputPath = path.join(
         outputDir,
-        getFeatureOutputFilename(featureType, ctx.clipMode, ctx.skipBoundaryClip),
+        getFeatureOutputFilename(
+          featureType,
+          ctx.target,
+          ctx.spatialFrame,
+          ctx.spatialPredicate,
+          ctx.spatialGeometry,
+        ),
       )
 
       // Check if file exists and handle according to onFileExists.

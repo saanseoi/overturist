@@ -39,9 +39,9 @@ const extractBoundsFromDivisionMock = mock(
 const getDivisionsByIdsMock = mock(async () => [] as Division[])
 const getDivisionsByNameMock = mock(async () => [] as Division[])
 const getDivisionsBySourceRecordIdMock = mock(async () => [] as Division[])
-const getFeaturesForBboxMock = mock(async () => ({ success: true, count: 3 }))
-const getFeaturesForGeomWithConnectionMock = mock(async () => ({
+const getFeaturesForSpatialWithConnectionMock = mock(async () => ({
   success: true,
+  bboxCount: 2,
   finalCount: 4,
 }))
 const getFeaturesForWorldMock = mock(async () => ({ success: true, count: 7 }))
@@ -106,24 +106,21 @@ async function loadProcessingModule() {
     fileExists: fileExistsMock,
     getFeatureOutputFilename: (
       featureType: string,
-      clipMode: string,
-      skipBoundaryClip?: boolean,
+      target: string,
+      spatialFrame?: string,
+      spatialPredicate?: string,
+      spatialGeometry?: string,
     ) =>
-      skipBoundaryClip
-        ? `${featureType}.bboxCrop.parquet`
-        : clipMode === 'preserve'
-          ? `${featureType}.preserveCrop.parquet`
-          : clipMode === 'all'
-            ? `${featureType}.containCrop.parquet`
-            : `${featureType}.parquet`,
+      target === 'world'
+        ? `${featureType}.parquet`
+        : `${featureType}.${spatialFrame}.${spatialPredicate}.${spatialGeometry}.parquet`,
   }))
   mock.module(abs('../../libs/data/queries.ts'), () => ({
     extractBoundsFromDivision: extractBoundsFromDivisionMock,
     getDivisionsByIds: getDivisionsByIdsMock,
     getDivisionsByName: getDivisionsByNameMock,
     getDivisionsBySourceRecordId: getDivisionsBySourceRecordIdMock,
-    getFeaturesForBbox: getFeaturesForBboxMock,
-    getFeaturesForGeomWithConnection: getFeaturesForGeomWithConnectionMock,
+    getFeaturesForSpatialWithConnection: getFeaturesForSpatialWithConnectionMock,
     getFeaturesForWorld: getFeaturesForWorldMock,
     getLastReleaseCount: getLastReleaseCountMock,
     localizeDivisionHierarchiesForRelease: localizeDivisionHierarchiesForReleaseMock,
@@ -192,8 +189,9 @@ function createContext(overrides: Partial<ControlContext> = {}): ControlContext 
     division: null,
     bbox: null,
     geometry: null,
-    skipBoundaryClip: true,
-    clipMode: 'preserve',
+    spatialFrame: 'division',
+    spatialPredicate: 'intersects',
+    spatialGeometry: 'preserve',
     featureTypes: ['building'],
     featureNameWidth: 12,
     indexWidth: 2,
@@ -231,8 +229,7 @@ beforeEach(async () => {
   getDivisionsByIdsMock.mockClear()
   getDivisionsByNameMock.mockClear()
   getDivisionsBySourceRecordIdMock.mockClear()
-  getFeaturesForBboxMock.mockClear()
-  getFeaturesForGeomWithConnectionMock.mockClear()
+  getFeaturesForSpatialWithConnectionMock.mockClear()
   getFeaturesForWorldMock.mockClear()
   getLastReleaseCountMock.mockClear()
   localizeDivisionHierarchiesForReleaseMock.mockClear()
@@ -265,19 +262,7 @@ beforeEach(async () => {
   getDivisionsByIdsMock.mockImplementation(async () => [])
   getDivisionsByNameMock.mockImplementation(async () => [])
   getDivisionsBySourceRecordIdMock.mockImplementation(async () => [])
-  getFeaturesForBboxMock.mockImplementation(
-    async (
-      _ctx: ControlContext,
-      _featureType: string,
-      _theme: string,
-      _outputPath: string,
-      onProgress?: (update?: ProgressUpdate) => void,
-    ) => {
-      onProgress?.({ stage: 'bbox', count: 3 })
-      return { success: true, count: 3 }
-    },
-  )
-  getFeaturesForGeomWithConnectionMock.mockImplementation(
+  getFeaturesForSpatialWithConnectionMock.mockImplementation(
     async (
       _connection: unknown,
       _ctx: ControlContext,
@@ -344,8 +329,7 @@ describe('processFeatureTypes', () => {
     )
 
     assert.equal(getFeaturesForWorldMock.mock.calls.length, 1)
-    assert.equal(getFeaturesForBboxMock.mock.calls.length, 0)
-    assert.equal(getFeaturesForGeomWithConnectionMock.mock.calls.length, 0)
+    assert.equal(getFeaturesForSpatialWithConnectionMock.mock.calls.length, 0)
     assert.equal(connectionRunMock.mock.calls.length, 1)
     assert.match(String(connectionRunMock.mock.calls[0]?.[0]), /INSTALL httpfs/)
     assert.equal(finalizeProgressDisplayMock.mock.calls.length, 1)
@@ -361,16 +345,16 @@ describe('processFeatureTypes', () => {
         division: createDivision('division-1'),
         bbox: { xmin: 1, ymin: 2, xmax: 3, ymax: 4 },
         geometry: 'abcd1234',
-        skipBoundaryClip: false,
+        spatialFrame: 'division',
       }),
     )
 
     assert.equal(connectionRunMock.mock.calls.length, 2)
     assert.match(
       String(connectionRunMock.mock.calls[1]?.[0]),
-      /CREATE TEMP TABLE boundary_geom/,
+      /CREATE OR REPLACE TEMP TABLE frame_geom/,
     )
-    assert.equal(getFeaturesForGeomWithConnectionMock.mock.calls.length, 1)
+    assert.equal(getFeaturesForSpatialWithConnectionMock.mock.calls.length, 1)
   })
 
   test('skips existing output files when onFileExists is skip', async () => {

@@ -114,7 +114,10 @@ describe('initializeFileHandling', () => {
       false,
       [],
       '/tmp/nonexistent-output',
-      'all',
+      'division',
+      'division',
+      'intersects',
+      'clip-all',
     )
 
     assert.equal(result.onFileExists, 'skip')
@@ -134,7 +137,10 @@ describe('initializeFileHandling', () => {
       false,
       [],
       '/tmp/nonexistent-output',
-      'smart',
+      'division',
+      'division',
+      'intersects',
+      'clip-smart',
     )
 
     assert.deepEqual(determineActionOnExistingFilesMock.mock.calls[0], [
@@ -155,7 +161,10 @@ describe('initializeFileHandling', () => {
     )
 
     try {
-      await fs.writeFile(path.join(outputDir, 'building.parquet'), '')
+      await fs.writeFile(
+        path.join(outputDir, 'building.division.intersects.clipSmart.parquet'),
+        '',
+      )
 
       await initializeFileHandling(
         createConfig(),
@@ -163,7 +172,10 @@ describe('initializeFileHandling', () => {
         undefined,
         ['building', 'address'],
         outputDir,
-        'smart',
+        'division',
+        'division',
+        'intersects',
+        'clip-smart',
       )
 
       assert.deepEqual(determineActionOnExistingFilesMock.mock.calls[0], [
@@ -187,7 +199,10 @@ describe('initializeFileHandling', () => {
     )
 
     try {
-      await fs.writeFile(path.join(outputDir, 'building.bboxCrop.parquet'), '')
+      await fs.writeFile(
+        path.join(outputDir, 'building.bbox.intersects.preserve.parquet'),
+        '',
+      )
 
       await initializeFileHandling(
         createConfig(),
@@ -195,8 +210,10 @@ describe('initializeFileHandling', () => {
         undefined,
         ['building', 'address'],
         outputDir,
-        'smart',
-        true,
+        'bbox',
+        'bbox',
+        'intersects',
+        'preserve',
       )
 
       assert.deepEqual(determineActionOnExistingFilesMock.mock.calls[0], [
@@ -221,7 +238,10 @@ describe('initializeFileHandling', () => {
           false,
           [],
           '/tmp/nonexistent-output',
-          'smart',
+          'division',
+          'division',
+          'intersects',
+          'clip-smart',
         ),
       /Aborting file handling/,
     )
