@@ -4,6 +4,7 @@ import kleur from 'kleur'
 import type {
   BBox,
   CliArgs,
+  ClipMode,
   Config,
   Division,
   InteractiveOptions,
@@ -27,15 +28,20 @@ type DirectoryEntryInfo = {
  * Checks for existing Parquet files in the given output directory.
  * @param featureTypes - Array of feature type names to check for
  * @param regionOutputDir - Directory path to check for existing files
+ * @param clipMode - Active clip mode used to derive the expected filename
  * @returns Promise resolving to array of feature types that have existing files
  */
 export async function checkForExistingFiles(
   featureTypes: string[],
   regionOutputDir: string,
+  clipMode: ClipMode = 'smart',
 ): Promise<string[]> {
   const existingFiles: string[] = []
   for (const type of featureTypes) {
-    const filePath = path.join(regionOutputDir, `${type}.parquet`)
+    const filePath = path.join(
+      regionOutputDir,
+      getFeatureOutputFilename(type, clipMode),
+    )
     const fileExists = await fs
       .access(filePath)
       .then(() => true)
@@ -45,6 +51,28 @@ export async function checkForExistingFiles(
     }
   }
   return existingFiles
+}
+
+/**
+ * Builds the versioned output filename for a feature type and clip mode.
+ * @param featureType - Feature type name used as the file stem
+ * @param clipMode - Active clip mode for the run
+ * @returns Parquet filename that avoids collisions across clip modes
+ * @remarks `smart` stays unsuffixed for backward-friendly default naming.
+ */
+export function getFeatureOutputFilename(
+  featureType: string,
+  clipMode: ClipMode = 'smart',
+): string {
+  if (clipMode === 'preserve') {
+    return `${featureType}.preserveCrop.parquet`
+  }
+
+  if (clipMode === 'all') {
+    return `${featureType}.containCrop.parquet`
+  }
+
+  return `${featureType}.parquet`
 }
 
 /**
@@ -193,6 +221,7 @@ export async function ensureVersionedCacheDir(
  * @param interactiveOpts - Interactive options when prompts are enabled
  * @param featureTypes - Feature types scheduled for output
  * @param outputDir - Output directory for the current run
+ * @param clipMode - Active clip mode used to resolve output filenames
  * @returns Promise resolving to the selected existing-file strategy
  */
 export async function initializeFileHandling(
@@ -201,11 +230,12 @@ export async function initializeFileHandling(
   interactiveOpts: InteractiveOptions | false | undefined,
   featureTypes: string[],
   outputDir: string,
+  clipMode: ClipMode = 'smart',
 ): Promise<{
   onFileExists: OnExistingFilesAction | null
 }> {
   const userDefinedOnFileExists = config.onFileExists || cliArgs.onFileExists
-  const existingFiles = await checkForExistingFiles(featureTypes, outputDir)
+  const existingFiles = await checkForExistingFiles(featureTypes, outputDir, clipMode)
   const onFileExists = await determineActionOnExistingFiles(
     existingFiles,
     userDefinedOnFileExists,
@@ -309,13 +339,18 @@ export async function fileExists(filePath: string): Promise<boolean> {
  * Checks if a Parquet file exists for a given version and feature type.
  * @param outputDir - Directory that should contain the Parquet file
  * @param featureType - The feature type to check for
+ * @param clipMode - Active clip mode used to derive the expected filename
  * @returns Promise resolving to true if the Parquet file exists
  */
 export async function isParquetExists(
   outputDir: string,
   featureType: string,
+  clipMode: ClipMode = 'smart',
 ): Promise<boolean> {
-  const parquetFile = path.join(outputDir, `${featureType}.parquet`)
+  const parquetFile = path.join(
+    outputDir,
+    getFeatureOutputFilename(featureType, clipMode),
+  )
 
   return await fileExists(parquetFile)
 }

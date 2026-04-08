@@ -4,7 +4,7 @@ import kleur from 'kleur'
 import { cacheDivisions, getCachedDivision, getTempCachePath } from './cache'
 import { countryCodes } from '../core/constants'
 import { runDuckDBQuery } from './db'
-import { getOutputDir, isParquetExists } from '../core/fs'
+import { getFeatureOutputFilename, getOutputDir, isParquetExists } from '../core/fs'
 import type {
   BBox,
   ClipMode,
@@ -365,12 +365,16 @@ export async function getLastReleaseCount(
         ctx.division,
         ctx.bbox,
       )
-      const fileExists = await isParquetExists(previousVersionOutputDir, featureType)
+      const fileExists = await isParquetExists(
+        previousVersionOutputDir,
+        featureType,
+        ctx.clipMode,
+      )
 
       if (fileExists) {
         const previousFile = path.join(
           previousVersionOutputDir,
-          `${featureType}.parquet`,
+          getFeatureOutputFilename(featureType, ctx.clipMode),
         )
         return await getCount(previousFile)
       }
