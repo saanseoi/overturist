@@ -4,5 +4,5 @@
 # Check branch naming convention
 bun run lint:branch
 
-# Run tests with custom config
-bun run test:run
+# Run tests before pushing
+bun run test

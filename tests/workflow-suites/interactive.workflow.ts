@@ -31,6 +31,7 @@ const getCachedSearchResultsMock = mock(
 )
 const getCachedDivisionMock = mock(async () => null as Division | null)
 const getVersionsInCacheMock = mock(async () => [] as string[])
+const touchCachedSearchResultsMock = mock(async () => null)
 const warmReleaseCacheForInteractiveStartupMock = mock(async () => {})
 const executeDownloadWorkflowMock = mock(async () => {})
 const resolveOptionsMock = mock(async () => createControlContext())
@@ -109,6 +110,7 @@ async function loadInteractiveModule() {
     cacheDivision: cacheDivisionMock,
     getCachedDivision: getCachedDivisionMock,
     getCachedSearchResults: getCachedSearchResultsMock,
+    touchCachedSearchResults: touchCachedSearchResultsMock,
     getVersionsInCache: getVersionsInCacheMock,
   }))
   mock.module(abs('../../libs/data/releases.ts'), () => ({
@@ -254,6 +256,7 @@ beforeEach(() => {
   getCachedSearchResultsMock.mockClear()
   getCachedDivisionMock.mockClear()
   getVersionsInCacheMock.mockClear()
+  touchCachedSearchResultsMock.mockClear()
   warmReleaseCacheForInteractiveStartupMock.mockClear()
   executeDownloadWorkflowMock.mockClear()
   resolveOptionsMock.mockClear()
@@ -287,6 +290,7 @@ beforeEach(() => {
   }))
   getCachedDivisionMock.mockImplementation(async () => null)
   getVersionsInCacheMock.mockImplementation(async () => [])
+  touchCachedSearchResultsMock.mockImplementation(async () => null)
   warmReleaseCacheForInteractiveStartupMock.mockImplementation(async () => {})
   executeDownloadWorkflowMock.mockImplementation(async () => {})
   resolveOptionsMock.mockImplementation(async () => createControlContext())
@@ -402,6 +406,11 @@ describe('handleMainMenu', () => {
     const config = createConfig()
     await handleMainMenu(config, createCliArgs())
 
+    assert.deepEqual(touchCachedSearchResultsMock.mock.calls[0], [
+      '2026-03-18.0',
+      2,
+      'central',
+    ])
     assert.equal(getCachedSearchResultsMock.mock.calls.length, 0)
     assert.equal(getDivisionsByIdsMock.mock.calls.length, 1)
     assert.equal(cacheDivisionMock.mock.calls.length, 1)
@@ -478,6 +487,11 @@ describe('handleMainMenu', () => {
 
     await handleMainMenu(createConfig(), createCliArgs())
 
+    assert.deepEqual(touchCachedSearchResultsMock.mock.calls[0], [
+      '2026-03-18.0',
+      2,
+      'central',
+    ])
     assert.equal(resolveDivisionInfoContextMock.mock.calls.length, 1)
     assert.deepEqual(resolveDivisionInfoContextMock.mock.calls[0], [
       createConfig({
@@ -514,6 +528,11 @@ describe('handleMainMenu', () => {
 
     await handleMainMenu(createConfig(), createCliArgs())
 
+    assert.deepEqual(touchCachedSearchResultsMock.mock.calls[0], [
+      '2026-03-18.0',
+      2,
+      'central',
+    ])
     assert.equal(getCachedSearchResultsMock.mock.calls.length, 1)
     assert.equal(getDivisionsByIdsMock.mock.calls.length, 0)
     assert.equal(cacheDivisionMock.mock.calls.length, 0)

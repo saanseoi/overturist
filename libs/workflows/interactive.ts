@@ -6,6 +6,7 @@ import {
   cacheDivision,
   getCachedDivision,
   getCachedSearchResults,
+  touchCachedSearchResults,
   getVersionsInCache,
 } from '../data/cache'
 import { warmReleaseCacheForInteractiveStartup } from '../data/releases'
@@ -252,6 +253,18 @@ async function handleRepeatSearchWorkflow(
   if (!searchItem) {
     return // User cancelled or no history available
   }
+
+  void touchCachedSearchResults(
+    searchItem.version,
+    searchItem.adminLevel,
+    searchItem.term,
+  ).catch(error => {
+    console.error(
+      kleur.yellow(
+        `Could not update cached search history timestamp: ${error instanceof Error ? error.message : String(error)}`,
+      ),
+    )
+  })
 
   const cachedResults = await resolveRepeatSearchResults(searchItem)
 
