@@ -108,6 +108,11 @@ export function displayExtractionPlan(ctx: ControlContext): void {
 export function displayTableHeader(ctx: ControlContext): void {
   const countWidth = getCountColumnWidth(ctx.target)
 
+  // Reset transient renderer state so a new run cannot inherit a queued flush.
+  if (progressTableState.spinnerTimer) {
+    clearInterval(progressTableState.spinnerTimer)
+  }
+
   progressTableState.isActive = true
   progressTableState.renderMode = shouldUseLiveProgressMode() ? 'live' : 'snapshot'
   progressTableState.featureNameWidth = ctx.featureNameWidth
@@ -140,15 +145,14 @@ export function displayTableHeader(ctx: ControlContext): void {
     }
   })
   progressTableState.statusMessage = 'Waiting to start'
+  progressTableState.renderScheduled = false
   progressTableState.pendingForceRender = false
   progressTableState.lastRenderedTable = null
   progressTableState.lastRenderedSnapshot = null
   progressTableState.lineCount = 0
+  progressTableState.spinnerTimer = null
 
   if (progressTableState.renderMode === 'live') {
-    if (progressTableState.spinnerTimer) {
-      clearInterval(progressTableState.spinnerTimer)
-    }
     progressTableState.spinnerTimer = setInterval(() => {
       renderLiveProgressTable()
     }, 250)
