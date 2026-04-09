@@ -302,9 +302,10 @@ describe('search cache', () => {
 
   test('refreshes lastRunAt when an existing cached search is repeated', async () => {
     const { touchCachedSearchResults, getCachedSearchResults } = await loadCacheModule()
+    const previousLastRunAt = new Date(Date.now() - 5_000).toISOString()
     await writeJsonFile(path.join(cacheRoot, '2026-03-18.0/search/2/central.json'), {
       createdAt: '2026-03-18T00:00:00.000Z',
-      lastRunAt: '2026-03-20T00:00:00.000Z',
+      lastRunAt: previousLastRunAt,
       version: '2026-03-18.0',
       adminLevel: 2,
       term: 'Central',
@@ -319,11 +320,11 @@ describe('search cache', () => {
     assert.ok(cached)
     assert.equal(updated.createdAt, '2026-03-18T00:00:00.000Z')
     assert.equal(cached.createdAt, '2026-03-18T00:00:00.000Z')
-    assert.notEqual(updated.lastRunAt, '2026-03-20T00:00:00.000Z')
+    assert.notEqual(updated.lastRunAt, previousLastRunAt)
     assert.equal(updated.lastRunAt, cached.lastRunAt)
     assert.ok(
       new Date(updated.lastRunAt ?? '').getTime() >
-        Date.parse('2026-03-20T00:00:00.000Z'),
+        new Date(previousLastRunAt).getTime(),
     )
   })
 
