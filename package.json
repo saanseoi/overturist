@@ -16,6 +16,7 @@
   },
   "files": [
     "bin",
+    "docs",
     "overturist.ts",
     "libs",
     "README.md",
