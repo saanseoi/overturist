@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.1.1 - 2026-04-09
+
+- Respect geometry's embedded CRS for correct area calculation
+- Sort previous searches by last run
+
 ## 0.1.0 - 2026-04-09
 
 Initial public release.
