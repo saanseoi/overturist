@@ -336,25 +336,34 @@ function normalizeDivisions(divisions: Division[]): Division[] {
  */
 function buildFeatureStatsQuery(filePathExpression: string): string {
   return `
-    SELECT
-      COUNT(*) AS count,
-      SUM(
-        CASE
-          WHEN geometry IS NOT NULL
-            AND ST_GeometryType(geometry) IN ('POLYGON', 'MULTIPOLYGON')
-          THEN 1
-          ELSE 0
-        END
-      ) AS polygon_count,
-      SUM(
+    WITH feature_rows AS (
+      SELECT
         CASE
           WHEN geometry IS NOT NULL
             AND ST_GeometryType(geometry) IN ('POLYGON', 'MULTIPOLYGON')
           THEN ST_Area(ST_Transform(geometry, 'EPSG:4326', 'EPSG:6933')) / 1000000.0
+          ELSE NULL
+        END AS polygon_area_km2
+      FROM read_parquet(${filePathExpression})
+    )
+    SELECT
+      COUNT(*) AS count,
+      SUM(CASE WHEN polygon_area_km2 IS NOT NULL THEN 1 ELSE 0 END) AS polygon_count,
+      SUM(
+        CASE
+          WHEN polygon_area_km2 IS NOT NULL AND isfinite(polygon_area_km2)
+          THEN polygon_area_km2
           ELSE 0
         END
-      ) AS area_km2
-    FROM read_parquet(${filePathExpression});
+      ) AS area_km2,
+      SUM(
+        CASE
+          WHEN polygon_area_km2 IS NOT NULL AND NOT isfinite(polygon_area_km2)
+          THEN 1
+          ELSE 0
+        END
+      ) AS invalid_area_count
+    FROM feature_rows;
   `
 }
 
@@ -380,15 +389,17 @@ function normalizeFeatureStats(stats?: {
   count?: number | string
   polygon_count?: number | string
   area_km2?: number | string
+  invalid_area_count?: number | string
 }): FeatureStats {
   const count = coerceNumericStat(stats?.count)
   const polygonCount = coerceNumericStat(stats?.polygon_count)
   const areaKm2 = coerceNumericStat(stats?.area_km2)
+  const invalidAreaCount = coerceNumericStat(stats?.invalid_area_count)
 
   return {
     count,
     hasArea: polygonCount > 0,
-    areaKm2: polygonCount > 0 ? areaKm2 : null,
+    areaKm2: polygonCount > 0 && invalidAreaCount === 0 ? areaKm2 : null,
   }
 }
 
@@ -407,6 +418,7 @@ async function getFeatureStatsWithConnection(
     count: number
     polygon_count: number
     area_km2: number
+    invalid_area_count: number
   }>
 
   return normalizeFeatureStats(result[0])
@@ -445,6 +457,7 @@ export async function getFeatureStats(filePath: string): Promise<FeatureStats> {
     count: number
     polygon_count: number
     area_km2: number
+    invalid_area_count: number
   }>
 
   return normalizeFeatureStats(result[0])

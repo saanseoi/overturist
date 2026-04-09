@@ -134,7 +134,15 @@ async function loadQueriesModule() {
 }
 
 function createConnection(
-  counts: Array<number | { count?: number; polygon_count?: number; area_km2?: number }>,
+  counts: Array<
+    | number
+    | {
+        count?: number
+        polygon_count?: number
+        area_km2?: number
+        invalid_area_count?: number
+      }
+  >,
 ) {
   const queries: string[] = []
 
@@ -150,9 +158,16 @@ function createConnection(
       const polygonCount =
         typeof nextValue === 'number' ? 0 : (nextValue?.polygon_count ?? 0)
       const areaKm2 = typeof nextValue === 'number' ? 0 : (nextValue?.area_km2 ?? 0)
+      const invalidAreaCount =
+        typeof nextValue === 'number' ? 0 : (nextValue?.invalid_area_count ?? 0)
       return {
         getRowObjectsJson: () => [
-          { count, polygon_count: polygonCount, area_km2: areaKm2 },
+          {
+            count,
+            polygon_count: polygonCount,
+            area_km2: areaKm2,
+            invalid_area_count: invalidAreaCount,
+          },
         ],
       }
     },
@@ -274,7 +289,9 @@ describe('count helpers', () => {
   test('parses feature stats results from DuckDB', async () => {
     const { getFeatureStats } = await loadQueriesModule()
     runDuckDBQueryMock.mockImplementation(async () => ({
-      stdout: JSON.stringify([{ count: 42, polygon_count: 5, area_km2: 18.25 }]),
+      stdout: JSON.stringify([
+        { count: 42, polygon_count: 5, area_km2: 18.25, invalid_area_count: 0 },
+      ]),
       stderr: '',
       exitCode: 0,
     }))
@@ -290,7 +307,14 @@ describe('count helpers', () => {
   test('coerces stringified DuckDB feature stats into numeric values', async () => {
     const { getFeatureStats } = await loadQueriesModule()
     runDuckDBQueryMock.mockImplementation(async () => ({
-      stdout: JSON.stringify([{ count: '42', polygon_count: '5', area_km2: '18.25' }]),
+      stdout: JSON.stringify([
+        {
+          count: '42',
+          polygon_count: '5',
+          area_km2: '18.25',
+          invalid_area_count: '0',
+        },
+      ]),
       stderr: '',
       exitCode: 0,
     }))
@@ -331,6 +355,23 @@ describe('count helpers', () => {
       throw new Error('count failed')
     })
     assert.equal(await getLastReleaseFeatureStats(createCtx(), 'building'), null)
+  })
+
+  test('hides area metrics when DuckDB reports invalid polygon areas', async () => {
+    const { getFeatureStats } = await loadQueriesModule()
+    runDuckDBQueryMock.mockImplementation(async () => ({
+      stdout: JSON.stringify([
+        { count: 10, polygon_count: 10, area_km2: 'NaN', invalid_area_count: 9 },
+      ]),
+      stderr: '',
+      exitCode: 0,
+    }))
+
+    assert.deepEqual(await getFeatureStats('/tmp/file.parquet'), {
+      count: 10,
+      hasArea: true,
+      areaKm2: null,
+    })
   })
 
   test('uses the resolved spatial filename for previous release lookups', async () => {
