@@ -341,7 +341,8 @@ function buildFeatureStatsQuery(filePathExpression: string): string {
         CASE
           WHEN geometry IS NOT NULL
             AND ST_GeometryType(geometry) IN ('POLYGON', 'MULTIPOLYGON')
-          THEN ST_Area(ST_Transform(geometry, 'EPSG:4326', 'EPSG:6933')) / 1000000.0
+          -- Respect the geometry's embedded CRS so clipped outputs keep reporting finite areas.
+          THEN ST_Area(ST_Transform(geometry, 'EPSG:6933')) / 1000000.0
           ELSE NULL
         END AS polygon_area_km2
       FROM read_parquet(${filePathExpression})

@@ -302,6 +302,14 @@ describe('count helpers', () => {
       areaKm2: 18.25,
     })
     assert.match(String(runDuckDBQueryMock.mock.calls[0]?.[0] ?? ''), /LOAD spatial;/)
+    assert.match(
+      String(runDuckDBQueryMock.mock.calls[0]?.[0] ?? ''),
+      /ST_Transform\(geometry, 'EPSG:6933'\)/,
+    )
+    assert.doesNotMatch(
+      String(runDuckDBQueryMock.mock.calls[0]?.[0] ?? ''),
+      /ST_Transform\(geometry, 'EPSG:4326', 'EPSG:6933'\)/,
+    )
   })
 
   test('coerces stringified DuckDB feature stats into numeric values', async () => {
