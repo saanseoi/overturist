@@ -66,6 +66,7 @@ function createCtx(overrides: Partial<ControlContext> = {}): ControlContext {
     divisionId: 'gers:division',
     division: createDivision('gers:division'),
     featureTypes: ['building'],
+    frameDivisionId: 'gers:division',
     spatialFrame: 'division',
     spatialPredicate: 'intersects',
     spatialGeometry: 'preserve',
@@ -571,6 +572,27 @@ describe('feature extraction queries', () => {
     )
   })
 
+  test('clips segment for geometry=clip-smart', async () => {
+    const { getFeaturesForSpatialWithConnection } = await loadQueriesModule()
+    const connection = createConnection([
+      { count: 4, polygon_count: 0, area_km2: 0 },
+      { count: 3, polygon_count: 0, area_km2: 0 },
+    ])
+
+    await getFeaturesForSpatialWithConnection(
+      connection as never,
+      createCtx({ spatialGeometry: 'clip-smart' }),
+      'segment',
+      'transportation',
+      '/tmp/final.parquet',
+    )
+
+    assert.equal(
+      connection.queries.some(query => query.includes('ST_Intersection')),
+      true,
+    )
+  })
+
   test('clips division_area for geometry=clip-smart', async () => {
     const { getFeaturesForSpatialWithConnection } = await loadQueriesModule()
     const connection = createConnection([
@@ -609,6 +631,29 @@ describe('feature extraction queries', () => {
 
     const finalQuery = connection.queries.at(-2) ?? ''
     assert.equal(finalQuery.includes('ST_Intersection(geometry'), false)
+    assert.equal(finalQuery.includes('ST_Intersects'), true)
+  })
+
+  test('pins division_area selection to the selected division identity', async () => {
+    const { getFeaturesForSpatialWithConnection } = await loadQueriesModule()
+    const connection = createConnection([
+      { count: 4, polygon_count: 4, area_km2: 8 },
+      { count: 1, polygon_count: 1, area_km2: 2.5 },
+    ])
+
+    await getFeaturesForSpatialWithConnection(
+      connection as never,
+      createCtx({
+        divisionId: 'gers:selected',
+        frameDivisionId: 'gers:parent',
+      }),
+      'division_area',
+      'divisions',
+      '/tmp/final.parquet',
+    )
+
+    const finalQuery = connection.queries.at(-2) ?? ''
+    assert.equal(finalQuery.includes("division_id = 'gers:selected'"), true)
     assert.equal(finalQuery.includes('ST_Intersects'), true)
   })
 

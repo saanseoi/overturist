@@ -17,6 +17,7 @@ const initializeTargetMock = mock(() => ({ target: 'division' as const }))
 const initializeBoundsMock = mock(async () => ({
   bbox: { xmin: 1, ymin: 2, xmax: 3, ymax: 4 },
   geometry: 'geom-hex',
+  frameDivisionId: 'division-1',
   spatialFrame: 'division' as const,
   spatialPredicate: 'intersects' as const,
   spatialGeometry: 'preserve' as const,
@@ -164,6 +165,7 @@ function createControlContext(): ControlContext {
     division,
     bbox: { xmin: 1, ymin: 2, xmax: 3, ymax: 4 },
     geometry: 'geom-hex',
+    frameDivisionId: 'division-1',
     spatialFrame: 'division',
     spatialPredicate: 'intersects',
     spatialGeometry: 'preserve',
@@ -217,6 +219,7 @@ describe('resolveOptions', () => {
       division: createDivision('division-1'),
       bbox: { xmin: 1, ymin: 2, xmax: 3, ymax: 4 },
       geometry: 'geom-hex',
+      frameDivisionId: 'division-1',
       spatialFrame: 'division',
       spatialPredicate: 'intersects',
       spatialGeometry: 'preserve',

@@ -60,11 +60,21 @@ export function displayExtractionPlan(ctx: ControlContext): void {
   const { version, schema, isLatest, isNewSchema } = releaseContext
   const bboxText = bbox ? formatBboxPath(bbox) : 'No bounding box (full dataset)'
   const outputDirText = outputDir ? formatPath(outputDir) : 'No output directory'
+  const divisionName = ctx.division?.names?.primary || ctx.divisionId || '-'
+  const divisionSubtype = ctx.division?.subtype || '-'
+  const divisionLines =
+    ctx.target === 'division'
+      ? [
+          `${kleur.bold('Division')}     ${kleur.cyan(divisionName)}`,
+          `${kleur.bold('Subtype')}      ${kleur.magenta(divisionSubtype)}`,
+        ]
+      : []
 
   note(
     [
       `${kleur.bold('Release')}      ${kleur.bold(kleur.cyan(version))}${isLatest ? ` ${kleur.red('(latest)')}` : ''}`,
       `${kleur.bold('Schema')}       ${kleur.bold(kleur.cyan(schema))}${isNewSchema ? ` ${kleur.red('(new)')}` : ''}`,
+      ...divisionLines,
       `${kleur.bold('Frame')}        ${kleur.cyan(ctx.spatialFrame)}`,
       `${kleur.bold('Predicate')}    ${kleur.cyan(ctx.spatialPredicate)}`,
       `${kleur.bold('Geometry')}     ${kleur.cyan(ctx.spatialGeometry)}`,

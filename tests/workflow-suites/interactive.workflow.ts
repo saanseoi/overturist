@@ -446,6 +446,27 @@ describe('handleMainMenu', () => {
     assert.equal(noteMock.mock.calls.length, 1)
   })
 
+  test('shows cached division name and subtype in the preset download header', async () => {
+    const { handleMainMenu } = await loadInteractiveModule()
+    getVersionsInCacheMock.mockImplementation(async () => ['2026-03-18.0'])
+    getCachedDivisionMock.mockImplementation(async () => createDivision('division-1'))
+
+    await handleMainMenu(
+      createConfig(),
+      createCliArgs({
+        divisionId: 'division-1',
+        divisionRequested: true,
+      }),
+    )
+
+    const [message, title] = noteMock.mock.calls[0] as [string, string]
+    assert.equal(title, 'Download Data')
+    assert.match(message, /Target:\s+Division/)
+    assert.match(message, /Name:\s+Division division-1/)
+    assert.match(message, /Subtype:\s+locality/)
+    assert.match(message, /GERS Id:\s+division-1/)
+  })
+
   test('reuses cached search results for repeat-info workflows without re-fetching the division', async () => {
     const { handleMainMenu } = await loadInteractiveModule()
     let call = 0

@@ -1,6 +1,6 @@
 import { spinner } from '@clack/prompts'
 import kleur from 'kleur'
-import { getCachedDivision } from '../data/cache'
+import { cacheDivision, getCachedDivision } from '../data/cache'
 import { ALL_DIVISION_SUBTYPES } from '../core/constants'
 import { searchDivisions } from './processing'
 import {
@@ -313,6 +313,7 @@ async function getCachedDivisionOrLoad(
     s.stop(
       `Found ${kleur.green(1)} matching division ${kleur.gray(`(${formatElapsedTime(Date.now() - startedAt)})`)}`,
     )
+    await cacheDivision(releaseVersion, divisions[0].id, divisions[0])
     return divisions[0]
   } catch (error) {
     bailFromSpinner(

@@ -303,6 +303,7 @@ export interface ControlContext {
   division: Division | null
   bbox: BBox | null
   geometry: Geometry | null // Hex-encoded WKB binary
+  frameDivisionId: string | null
   spatialFrame: SpatialFrame
   spatialPredicate: SpatialPredicate
   spatialGeometry: SpatialGeometryMode

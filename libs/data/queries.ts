@@ -52,12 +52,14 @@ const SUBTYPE_PRIORITY_CASE = `
 
 const SMART_CLIP_FEATURE_TYPES = new Set([
   'bathymetry',
+  'connector',
   'land_cover',
   'water',
   'division_area',
   'division_boundary',
   'land',
   'land_use',
+  'segment',
 ])
 
 /**
@@ -743,6 +745,26 @@ function buildExactPredicate(ctx: ControlContext): string {
 }
 
 /**
+ * Builds the exact feature-level filter for the local candidate cache.
+ * @param ctx - Active control context
+ * @param featureType - Feature type being processed
+ * @returns SQL fragment for the final candidate filter
+ */
+function buildFeatureExactWhereClause(
+  ctx: ControlContext,
+  featureType: string,
+): string {
+  const exactPredicate = buildExactPredicate(ctx)
+
+  if (featureType !== 'division_area' || ctx.target !== 'division' || !ctx.divisionId) {
+    return exactPredicate
+  }
+
+  // Pin division_area to the selected division so parent fallback geometry does not pull ancestors.
+  return `division_id = '${ctx.divisionId}' AND ${exactPredicate}`
+}
+
+/**
  * Downloads all features for the entire world dataset.
  * Used when target is 'world' - no filtering required.
  * @param featureType - The feature type to download
@@ -880,7 +902,7 @@ export async function getFeaturesForSpatialWithConnection(
         featureType,
         ctx.spatialGeometry,
       )
-      const exactPredicate = buildExactPredicate(ctx)
+      const exactPredicate = buildFeatureExactWhereClause(ctx, featureType)
 
       // Preserve full features by default, or clip selected feature types to the frame when configured.
       const geomFilterQuery = clipFeatureGeometry

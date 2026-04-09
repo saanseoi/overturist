@@ -4,6 +4,7 @@ import type { CliArgs, Config, Division } from '../../libs/core'
 
 const abs = (relativePath: string) => new URL(relativePath, import.meta.url).pathname
 
+const cacheDivisionMock = mock(async () => {})
 const getCachedDivisionMock = mock(async () => null as Division | null)
 const getAdminLevelsMock = mock(() => ({
   1: { subtypes: ['country', 'dependency'] },
@@ -49,6 +50,7 @@ async function loadDivisionsModule() {
     spinner: () => spinnerState,
   }))
   mock.module(abs('../../libs/data/cache.ts'), () => ({
+    cacheDivision: cacheDivisionMock,
     getCachedDivision: getCachedDivisionMock,
   }))
   mock.module(abs('../../libs/core/constants.ts'), () => ({
@@ -123,6 +125,7 @@ beforeEach(() => {
     return now
   }
 
+  cacheDivisionMock.mockClear()
   getCachedDivisionMock.mockClear()
   getAdminLevelsMock.mockClear()
   getDivisionsByIdsMock.mockClear()
@@ -142,6 +145,7 @@ beforeEach(() => {
   spinnerState.stop.mockClear()
   spinnerState.message.mockClear()
 
+  cacheDivisionMock.mockImplementation(async () => {})
   getCachedDivisionMock.mockImplementation(async () => null as Division | null)
   getAdminLevelsMock.mockImplementation(() => ({
     1: { subtypes: ['country', 'dependency'] },
@@ -268,6 +272,11 @@ describe('initializeDivision', () => {
       true,
       'en',
     ])
+    assert.deepEqual(cacheDivisionMock.mock.calls[0], [
+      '2026-03-18.0',
+      'cli-division',
+      localizedDivision,
+    ])
     assert.equal(spinnerState.start.mock.calls.length, 1)
     assert.match(
       String(spinnerState.start.mock.calls[0]?.[0] ?? ''),
@@ -318,6 +327,11 @@ describe('initializeDivision', () => {
 
     assert.equal(result.divisionId, 'division-from-id')
     assert.equal(getDivisionsByIdsMock.mock.calls.length, 1)
+    assert.deepEqual(cacheDivisionMock.mock.calls[0], [
+      '2026-03-18.0',
+      'division-from-id',
+      createDivision('division-from-id'),
+    ])
     assert.equal(spinnerState.start.mock.calls.length, 1)
     assert.match(
       String(spinnerState.start.mock.calls[0]?.[0] ?? ''),
@@ -408,6 +422,25 @@ describe('initializeDivision', () => {
         ),
       /not found/,
     )
+  })
+
+  test('returns the cached division without writing it again', async () => {
+    const { initializeDivision } = await loadDivisionsModule()
+    const cachedDivision = createDivision('cached-division')
+    getCachedDivisionMock.mockImplementationOnce(async () => cachedDivision)
+
+    const result = await initializeDivision(
+      '2026-03-18.0',
+      'en',
+      createConfig(),
+      createCliArgs({ divisionId: 'cached-division' }),
+      'division',
+      false,
+    )
+
+    assert.equal(result.divisionId, 'cached-division')
+    assert.equal(getDivisionsByIdsMock.mock.calls.length, 0)
+    assert.equal(cacheDivisionMock.mock.calls.length, 0)
   })
 })
 

@@ -506,11 +506,14 @@ async function displayPresetDownloadHeader(
     const cachedDivision = await findCachedDivisionSummary(divisionId)
 
     if (cachedDivision) {
+      const divisionName = cachedDivision.names?.primary || cachedDivision.id
       const hierarchy =
         cachedDivision.hierarchies?.[0]?.map(entry => entry.name).join(' / ') || '-'
       note(
         [
-          `${kleur.bold('Target:')} ${kleur.cyan(cachedDivision.names?.primary || cachedDivision.id)}`,
+          `${kleur.bold('Target:')} ${kleur.cyan('Division')}`,
+          `${kleur.bold('Name:')} ${kleur.cyan(divisionName)}`,
+          `${kleur.bold('Subtype:')} ${kleur.magenta(cachedDivision.subtype || '-')}`,
           `${kleur.bold('Hierarchy:')} ${kleur.gray(hierarchy)}`,
           `${kleur.bold('GERS Id:')} ${kleur.yellow(cachedDivision.id)}`,
         ].join('\n'),

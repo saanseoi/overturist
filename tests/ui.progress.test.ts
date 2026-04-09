@@ -109,7 +109,13 @@ function createContext(overrides: Partial<ControlContext> = {}): ControlContext 
     outputDir: './data/out',
     releaseVersion: '2026-03-18.0',
     divisionId: 'division-1',
-    division: null,
+    division: {
+      id: 'division-1',
+      country: 'HK',
+      subtype: 'locality',
+      names: { primary: 'Central', common: [] },
+      hierarchies: [],
+    },
     geometry: null,
     onFileExists: 'skip',
     releaseContext: {
@@ -236,6 +242,8 @@ describe('displayExtractionPlan', () => {
     assert.match(message, /2026-03-18\.0/)
     assert.match(message, /\(latest\)/)
     assert.match(message, /\(new\)/)
+    assert.match(message, /Central/)
+    assert.match(message, /locality/)
     assert.match(message, /114\.12346 , 22\.3 , 114\.4 , 22/)
     assert.match(message, /data/)
   })

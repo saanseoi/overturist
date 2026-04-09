@@ -202,6 +202,7 @@ function createContext(overrides: Partial<ControlContext> = {}): ControlContext 
     division: null,
     bbox: null,
     geometry: null,
+    frameDivisionId: null,
     spatialFrame: 'division',
     spatialPredicate: 'intersects',
     spatialGeometry: 'preserve',

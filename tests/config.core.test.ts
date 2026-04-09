@@ -10,6 +10,7 @@ const bailMock = mock((msg?: string) => {
 const extractBoundsFromDivisionGeometryMock = mock(async () => ({
   bbox: { xmin: 1, ymin: 2, xmax: 3, ymax: 4 },
   geometry: 'division-geometry',
+  foundForDivisionId: 'division-1',
 }))
 const logState = {
   info: mock(() => {}),
@@ -108,6 +109,7 @@ beforeEach(() => {
   extractBoundsFromDivisionGeometryMock.mockImplementation(async () => ({
     bbox: { xmin: 1, ymin: 2, xmax: 3, ymax: 4 },
     geometry: 'division-geometry',
+    foundForDivisionId: 'division-1',
   }))
   logState.info.mockClear()
   logState.warn.mockClear()
@@ -258,6 +260,7 @@ describe('initializeBounds', () => {
     assert.deepEqual(result, {
       bbox: null,
       geometry: null,
+      frameDivisionId: null,
       spatialFrame: 'division',
       spatialPredicate: 'intersects',
       spatialGeometry: 'clip-smart',
@@ -285,6 +288,7 @@ describe('initializeBounds', () => {
     assert.deepEqual(result, {
       bbox,
       geometry: null,
+      frameDivisionId: null,
       spatialFrame: 'bbox',
       spatialPredicate: 'within',
       spatialGeometry: 'preserve',
@@ -311,6 +315,7 @@ describe('initializeBounds', () => {
     assert.deepEqual(result, {
       bbox: { xmin: 1, ymin: 2, xmax: 3, ymax: 4 },
       geometry: null,
+      frameDivisionId: null,
       spatialFrame: 'bbox',
       spatialPredicate: 'within',
       spatialGeometry: 'preserve',
@@ -333,6 +338,7 @@ describe('initializeBounds', () => {
     assert.deepEqual(result, {
       bbox: { xmin: 1, ymin: 2, xmax: 3, ymax: 4 },
       geometry: 'division-geometry',
+      frameDivisionId: division.id,
       spatialFrame: 'division',
       spatialPredicate: 'intersects',
       spatialGeometry: 'clip-all',

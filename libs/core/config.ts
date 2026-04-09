@@ -7,6 +7,7 @@ import type {
   CliArgs,
   Config,
   Division,
+  GERS,
   Geometry,
   InteractiveOptions,
   OnExistingFilesAction,
@@ -378,6 +379,7 @@ export async function initializeBounds(
   spatialPredicate: SpatialPredicate
   spatialGeometry: SpatialGeometryMode
   geometry: Geometry | null
+  frameDivisionId: GERS | null
 }> {
   // WORLD TARGET
   if (target === 'world') {
@@ -392,6 +394,7 @@ export async function initializeBounds(
         cliArgs.geometry || config.spatialGeometry,
       ),
       geometry: null,
+      frameDivisionId: null,
     }
   }
   const spatialFrame = validateSpatialFrame(
@@ -409,6 +412,7 @@ export async function initializeBounds(
     return {
       bbox: requestedBBox,
       geometry: null,
+      frameDivisionId: null,
       spatialFrame,
       spatialPredicate,
       spatialGeometry,
@@ -438,6 +442,7 @@ export async function initializeBounds(
     return {
       bbox: bounds.bbox,
       geometry: null,
+      frameDivisionId: null,
       spatialFrame,
       spatialPredicate,
       spatialGeometry,
@@ -447,6 +452,7 @@ export async function initializeBounds(
   return {
     bbox: requestedBBox || bounds?.bbox || null,
     geometry: bounds.geometry,
+    frameDivisionId: bounds.foundForDivisionId,
     spatialFrame,
     spatialPredicate,
     spatialGeometry,
