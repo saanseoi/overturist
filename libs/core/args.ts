@@ -221,22 +221,6 @@ export function handleArguments(argv: string[] = process.argv): CliArgs {
 }
 
 /**
- * Rejects removed legacy flags before delegating to the argument parser.
- * @param argv - Raw process arguments, including runtime and script paths
- * @returns Nothing. Exits through the standard help/error path when a removed flag is used.
- */
-function rejectRemovedLegacyFlags(argv: string[]): void {
-  if (hasOption(argv, 'target')) {
-    console.error(
-      kleur.red(
-        `The --target flag has been removed. Use ${kleur.white('--division')}, ${kleur.white('--osmId')}, ${kleur.white('--bbox')}, or ${kleur.white('--world')} instead.`,
-      ),
-    )
-    process.exit(1)
-  }
-}
-
-/**
  * NON INTERACTIVE MODES
  */
 

@@ -195,14 +195,6 @@ describe('handleArguments', () => {
     assert.equal(explicitSkipArgs.onFileExists, 'skip')
     assert.equal(defaultArgs.onFileExists, undefined)
   })
-  test('exits when the removed legacy --target flag is used', () => {
-    const result = withPatchedExit(() =>
-      handleArguments(['bun', 'overturist.ts', 'get', '--target', 'world']),
-    )
-
-    assert.equal(result.exitCode, 1)
-    assert.match(String(result.error), /process\.exit:1/)
-  })
 
   test('exits for invalid geometry values', () => {
     const result = withPatchedExit(() =>
