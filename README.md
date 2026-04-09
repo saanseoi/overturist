@@ -91,5 +91,10 @@ The Overture Maps Foundation has a monthly release cadence and keeps 60 days of 
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file
-for details.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+## Made with <3 in 
+
+<img width="1280" height="1125" alt="image" src="https://github.com/user-attachments/assets/b794d3f8-4062-475b-8232-4eef60d5b1cd" />
+<img width="1280" height="1119" alt="image" src="https://github.com/user-attachments/assets/1877b702-acd1-46fa-846c-71ce5bb180b1" />
+<img width="1280" height="1160" alt="image" src="https://github.com/user-attachments/assets/e39d6d71-c989-46c2-bf17-9793501386fc" />
