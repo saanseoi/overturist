@@ -44,9 +44,15 @@ const getFeaturesForSpatialWithConnectionMock = mock(async () => ({
   bboxCount: 2,
   bboxHasArea: true,
   bboxAreaKm2: 5.5,
-  finalCount: 4,
-  finalHasArea: true,
-  finalAreaKm2: 7.5,
+  finalCount: 0,
+  finalHasArea: false,
+  finalAreaKm2: null,
+  finalStatsDeferred: true,
+}))
+const getFeatureStatsMock = mock(async () => ({
+  count: 4,
+  hasArea: true,
+  areaKm2: 7.5,
 }))
 const getFeaturesForWorldMock = mock(async () => ({
   success: true,
@@ -68,6 +74,7 @@ const downloadParquetFilesMock = mock(async () => {})
 const applyProgressUpdateMock = mock(() => {})
 const finalizeProgressDisplayMock = mock(() => {})
 const handleSkippedFeatureMock = mock(async () => {})
+const refreshProgressDisplayMock = mock(() => {})
 const updateProgressDisplayMock = mock(() => {})
 const updateProgressStatusMock = mock(() => {})
 
@@ -115,7 +122,33 @@ async function loadProcessingModule() {
       }
     },
   }))
+  mock.module(abs('../../libs/data/db'), () => ({
+    DuckDBManager: class {
+      async getConnection() {
+        return {
+          run: connectionRunMock,
+        }
+      }
+
+      async close() {
+        await dbCloseMock()
+      }
+    },
+  }))
   mock.module(abs('../../libs/core/fs.ts'), () => ({
+    fileExists: fileExistsMock,
+    getFeatureOutputFilename: (
+      featureType: string,
+      target: string,
+      spatialFrame?: string,
+      spatialPredicate?: string,
+      spatialGeometry?: string,
+    ) =>
+      target === 'world'
+        ? `${featureType}.parquet`
+        : `${featureType}.${spatialFrame}.${spatialPredicate}.${spatialGeometry}.parquet`,
+  }))
+  mock.module(abs('../../libs/core/fs'), () => ({
     fileExists: fileExistsMock,
     getFeatureOutputFilename: (
       featureType: string,
@@ -133,6 +166,19 @@ async function loadProcessingModule() {
     getDivisionsByIds: getDivisionsByIdsMock,
     getDivisionsByName: getDivisionsByNameMock,
     getDivisionsBySourceRecordId: getDivisionsBySourceRecordIdMock,
+    getFeatureStats: getFeatureStatsMock,
+    getFeaturesForSpatialWithConnection: getFeaturesForSpatialWithConnectionMock,
+    getFeaturesForWorld: getFeaturesForWorldMock,
+    getLastReleaseFeatureStats: getLastReleaseFeatureStatsMock,
+    localizeDivisionHierarchiesForRelease: localizeDivisionHierarchiesForReleaseMock,
+    normalizeOsmRelationRecordId: normalizeOsmRelationRecordIdMock,
+  }))
+  mock.module(abs('../../libs/data/queries'), () => ({
+    extractBoundsFromDivision: extractBoundsFromDivisionMock,
+    getDivisionsByIds: getDivisionsByIdsMock,
+    getDivisionsByName: getDivisionsByNameMock,
+    getDivisionsBySourceRecordId: getDivisionsBySourceRecordIdMock,
+    getFeatureStats: getFeatureStatsMock,
     getFeaturesForSpatialWithConnection: getFeaturesForSpatialWithConnectionMock,
     getFeaturesForWorld: getFeaturesForWorldMock,
     getLastReleaseFeatureStats: getLastReleaseFeatureStatsMock,
@@ -142,10 +188,14 @@ async function loadProcessingModule() {
   mock.module(abs('../../libs/data/s3.ts'), () => ({
     downloadParquetFiles: downloadParquetFilesMock,
   }))
+  mock.module(abs('../../libs/data/s3'), () => ({
+    downloadParquetFiles: downloadParquetFilesMock,
+  }))
   mock.module(abs('../../libs/ui'), () => ({
     applyProgressUpdate: applyProgressUpdateMock,
     finalizeProgressDisplay: finalizeProgressDisplayMock,
     handleSkippedFeature: handleSkippedFeatureMock,
+    refreshProgressDisplay: refreshProgressDisplayMock,
     updateProgressDisplay: updateProgressDisplayMock,
     updateProgressStatus: updateProgressStatusMock,
   }))
@@ -244,6 +294,7 @@ beforeEach(async () => {
   getDivisionsByNameMock.mockClear()
   getDivisionsBySourceRecordIdMock.mockClear()
   getFeaturesForSpatialWithConnectionMock.mockClear()
+  getFeatureStatsMock.mockClear()
   getFeaturesForWorldMock.mockClear()
   getLastReleaseFeatureStatsMock.mockClear()
   localizeDivisionHierarchiesForReleaseMock.mockClear()
@@ -252,6 +303,7 @@ beforeEach(async () => {
   applyProgressUpdateMock.mockClear()
   finalizeProgressDisplayMock.mockClear()
   handleSkippedFeatureMock.mockClear()
+  refreshProgressDisplayMock.mockClear()
   updateProgressDisplayMock.mockClear()
   updateProgressStatusMock.mockClear()
   bailMock.mockClear()
@@ -292,9 +344,20 @@ beforeEach(async () => {
         areaApplicable: true,
         areaKm2: 7.5,
       })
-      return { success: true, finalCount: 4, finalHasArea: true, finalAreaKm2: 7.5 }
+      return {
+        success: true,
+        finalCount: 0,
+        finalHasArea: false,
+        finalAreaKm2: null,
+        finalStatsDeferred: true,
+      }
     },
   )
+  getFeatureStatsMock.mockImplementation(async () => ({
+    count: 4,
+    hasArea: true,
+    areaKm2: 7.5,
+  }))
   getFeaturesForWorldMock.mockImplementation(
     async (
       _featureType: string,
@@ -378,6 +441,7 @@ describe('processFeatureTypes', () => {
       /CREATE OR REPLACE TEMP TABLE frame_geom/,
     )
     assert.equal(getFeaturesForSpatialWithConnectionMock.mock.calls.length, 1)
+    assert.equal(getFeatureStatsMock.mock.calls.length, 1)
   })
 
   test('skips existing output files when onFileExists is skip', async () => {

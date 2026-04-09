@@ -228,15 +228,15 @@ describe('handleArguments', () => {
       assert.match(
         output,
         new RegExp(
-          `Spatial frame ${escapeRegex(kleur.cyan('bbox'))}${escapeRegex(
-            kleur.grey(', '),
-          )}${escapeRegex(kleur.cyan('division'))}`,
+          `Spatial frame${escapeRegex(' - ')}${escapeRegex(
+            kleur.cyan('bbox'),
+          )}${escapeRegex(kleur.grey(', '))}${escapeRegex(kleur.cyan('division'))}`,
         ),
       )
       assert.match(
         output,
         new RegExp(
-          `Spatial predicate ${escapeRegex(
+          `Spatial predicate${escapeRegex(' - ')}${escapeRegex(
             kleur.cyan('intersects'),
           )}${escapeRegex(kleur.grey(', '))}${escapeRegex(kleur.cyan('within'))}`,
         ),
@@ -244,7 +244,9 @@ describe('handleArguments', () => {
       assert.match(
         output,
         new RegExp(
-          `Geometry output ${escapeRegex(kleur.cyan('preserve'))}${escapeRegex(
+          `Geometry output${escapeRegex(' - ')}${escapeRegex(
+            kleur.cyan('preserve'),
+          )}${escapeRegex(
             kleur.grey(', '),
           )}${escapeRegex(kleur.cyan('clip-smart'))}${escapeRegex(
             kleur.grey(', '),

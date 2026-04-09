@@ -13,6 +13,7 @@ import { DuckDBManager } from '../data/db'
 import { fileExists, getFeatureOutputFilename } from '../core/fs'
 import {
   extractBoundsFromDivision,
+  getFeatureStats,
   getDivisionsByIds,
   getDivisionsByName,
   getDivisionsBySourceRecordId,
@@ -58,6 +59,7 @@ function hasExactSpatialPass(ctx: ControlContext): boolean {
  */
 export async function processFeatureTypes(ctx: ControlContext) {
   const dbManager = new DuckDBManager()
+  const pendingStatsTasks: Promise<void>[] = []
   try {
     // Reuse one DuckDB connection so geometry-constrained runs share setup cost.
     const connection = await dbManager.getConnection()
@@ -82,10 +84,19 @@ export async function processFeatureTypes(ctx: ControlContext) {
     }
 
     for (const [index, featureType] of ctx.featureTypes.entries()) {
-      await processFeatureType(ctx, featureType, index, connection)
+      const pendingStatsTask = await processFeatureType(
+        ctx,
+        featureType,
+        index,
+        connection,
+      )
+      if (pendingStatsTask) {
+        pendingStatsTasks.push(pendingStatsTask)
+      }
     }
 
-    updateProgressStatus(kleur.green('All done'))
+    await Promise.all(pendingStatsTasks)
+    updateProgressStatus(kleur.green('All done'), true)
   } finally {
     finalizeProgressDisplay()
     await dbManager.close()
@@ -220,6 +231,32 @@ function updateProgressForCompletedFeature(
 }
 
 /**
+ * Marks a spatial feature as fully written while final stats are still resolving in the background.
+ * @param progressState - Current progress state to update
+ * @param lastReleaseStats - Previous release stats used to preserve area applicability
+ * @param theme - Theme bucket associated with the feature
+ * @param featureType - Feature type name for status messaging
+ */
+function updateProgressForDeferredStats(
+  progressState: ProgressState,
+  lastReleaseStats: FeatureStats | null,
+  theme: string | undefined,
+  featureType: string,
+): void {
+  progressState.bboxComplete = true
+  progressState.geomComplete = true
+  progressState.isProcessing = false
+  progressState.activeStage = null
+  progressState.hasCountMetric = false
+  progressState.featureCount = 0
+  progressState.diffCount = null
+  progressState.hasAreaMetric = lastReleaseStats?.hasArea ?? false
+  progressState.featureAreaKm2 = null
+  progressState.diffAreaKm2 = null
+  progressState.currentMessage = `${kleur.white('Completed')} ${formatProgressSubject(theme, featureType)} ${kleur.gray('(stats pending)')}`
+}
+
+/**
  * Creates a progress callback that updates the active stage before re-rendering.
  * @param featureType - Feature type being processed
  * @param index - Index in the feature array
@@ -280,7 +317,7 @@ async function runFeatureExtraction(
   progressState: ProgressState,
   lastReleaseStats: FeatureStats | null,
   connection?: DuckDBConnection,
-): Promise<void> {
+): Promise<Promise<void> | null> {
   const { featureTypes, featureNameWidth, indexWidth, target } = ctx
   const theme = ctx.themeMapping[featureType]
   const progressSubject = formatProgressSubject(theme, featureType)
@@ -331,7 +368,7 @@ async function runFeatureExtraction(
       'areaKm2',
       'bbox',
     )
-    return
+    return null
   }
 
   if (!ctx.bbox) {
@@ -356,7 +393,38 @@ async function runFeatureExtraction(
 
       bboxProgressCallback(update)
     },
+    'defer',
   )
+
+  if (result.finalStatsDeferred) {
+    updateProgressForDeferredStats(progressState, lastReleaseStats, theme, featureType)
+
+    return (async () => {
+      try {
+        const finalStats = await getFeatureStats(outputPath)
+        updateProgressForCompletedFeature(
+          {
+            success: true,
+            finalCount: finalStats.count,
+            finalHasArea: finalStats.hasArea,
+            finalAreaKm2: finalStats.areaKm2,
+          },
+          progressState,
+          lastReleaseStats,
+          theme,
+          featureType,
+          'finalCount',
+          'finalHasArea',
+          'finalAreaKm2',
+          'geometry',
+        )
+        updateProgressStatus(progressState.currentMessage ?? kleur.green('Completed'))
+      } catch (_error) {
+        progressState.currentMessage = `${kleur.yellow('Completed')} ${formatProgressSubject(theme, featureType)} ${kleur.red('(stats unavailable)')}`
+        updateProgressStatus(progressState.currentMessage, true)
+      }
+    })()
+  }
 
   updateProgressForCompletedFeature(
     result,
@@ -369,7 +437,7 @@ async function runFeatureExtraction(
     'finalAreaKm2',
     'geometry',
   )
-  return
+  return null
 }
 
 /**
@@ -385,7 +453,7 @@ async function processFeatureType(
   featureType: string,
   index: number,
   connection?: DuckDBConnection,
-) {
+): Promise<Promise<void> | null> {
   const { featureTypes, featureNameWidth, indexWidth } = ctx
   const countWidth = ctx.target === 'division' ? 7 : 9
 
@@ -403,7 +471,7 @@ async function processFeatureType(
   const outputFileExists = await fileExists(outputPath)
   if (outputFileExists && ctx.onFileExists === 'skip') {
     await handleSkippedFeature(ctx, featureType, index, outputPath)
-    return
+    return null
   }
 
   const { lastReleaseStats, progressState } = await initProgressTracker(
@@ -417,7 +485,7 @@ async function processFeatureType(
 
   try {
     // Route each feature through the single-stage or two-stage extraction path.
-    await runFeatureExtraction(
+    const pendingStatsTask = await runFeatureExtraction(
       ctx,
       featureType,
       index,
@@ -435,6 +503,7 @@ async function processFeatureType(
       indexWidth,
       countWidth,
     )
+    return pendingStatsTask
   } catch (error) {
     progressState.isProcessing = false
     progressState.activeStage = null
@@ -448,8 +517,8 @@ async function processFeatureType(
       indexWidth,
       countWidth,
     )
-    updateProgressStatus(progressState.currentMessage)
-    return
+    updateProgressStatus(progressState.currentMessage, true)
+    return null
   }
 }
 

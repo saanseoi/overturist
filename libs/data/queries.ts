@@ -33,6 +33,10 @@ const DUCK_DB_REMOTE_SETUP = `
   SET s3_region='us-west-2';
 `
 
+const DUCK_DB_LOCAL_SPATIAL_SETUP = `
+  INSTALL spatial; LOAD spatial;
+`
+
 const SUBTYPE_PRIORITY_CASE = `
   CASE subtype
     WHEN 'country' THEN 1
@@ -431,7 +435,12 @@ export async function getCount(filePath: string): Promise<number> {
  * @returns Promise resolving to count plus polygon area stats
  */
 export async function getFeatureStats(filePath: string): Promise<FeatureStats> {
-  const { stdout } = await runDuckDBQuery(buildFeatureStatsQuery(`'${filePath}'`))
+  const { stdout } = await runDuckDBQuery(
+    `
+      ${DUCK_DB_LOCAL_SPATIAL_SETUP}
+      ${buildFeatureStatsQuery(`'${filePath}'`)}
+    `,
+  )
   const result = JSON.parse(stdout) as Array<{
     count: number
     polygon_count: number
@@ -773,8 +782,30 @@ function buildFeatureExactWhereClause(
     return exactPredicate
   }
 
-  // Pin division_area to the selected division so parent fallback geometry does not pull ancestors.
-  return `division_id = '${ctx.divisionId}' AND ${exactPredicate}`
+  const ancestorIds = new Set<string>()
+
+  for (const hierarchy of ctx.division?.hierarchies ?? []) {
+    const selectedIndex = hierarchy.findIndex(
+      entry => entry.division_id === ctx.divisionId,
+    )
+
+    if (selectedIndex <= 0) {
+      continue
+    }
+
+    for (const ancestor of hierarchy.slice(0, selectedIndex)) {
+      ancestorIds.add(ancestor.division_id)
+    }
+  }
+
+  if (ancestorIds.size === 0) {
+    return exactPredicate
+  }
+
+  const excludedAncestorIds = [...ancestorIds].map(escapeSqlLiteral).join(', ')
+
+  // Preserve ordinary spatial matches while excluding administrative ancestors of the selected division.
+  return `division_id NOT IN (${excludedAncestorIds}) AND ${exactPredicate}`
 }
 
 /**
@@ -856,6 +887,7 @@ export async function getFeaturesForSpatialWithConnection(
   theme: string,
   outputFile: string,
   progressCallback?: (update: ProgressUpdate) => void,
+  finalStatsMode: 'sync' | 'defer' = 'sync',
 ): Promise<{
   success: boolean
   bboxCount: number
@@ -864,6 +896,7 @@ export async function getFeaturesForSpatialWithConnection(
   finalCount: number
   finalHasArea: boolean
   finalAreaKm2: number | null
+  finalStatsDeferred?: boolean
 }> {
   const s3Path = `'s3://overturemaps-us-west-2/release/${ctx.releaseVersion}/theme=${theme}/type=${featureType}/*.parquet'`
   const cacheFile = await getTempCachePath(outputFile)
@@ -952,6 +985,19 @@ export async function getFeaturesForSpatialWithConnection(
             `
 
       await connection.run(geomFilterQuery)
+
+      if (finalStatsMode === 'defer') {
+        return {
+          success: true,
+          bboxCount: bboxStats.count,
+          bboxHasArea: bboxStats.hasArea,
+          bboxAreaKm2: bboxStats.areaKm2,
+          finalCount: 0,
+          finalHasArea: false,
+          finalAreaKm2: null,
+          finalStatsDeferred: true,
+        }
+      }
 
       // Count the final output on the shared connection to avoid extra DuckDB startup work.
       const finalStats = await getFeatureStatsWithConnection(connection, outputFile)

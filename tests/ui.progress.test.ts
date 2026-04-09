@@ -68,11 +68,6 @@ async function loadProgressModule() {
     getFeatureStats: getFeatureStatsMock,
     getLastReleaseFeatureStats: getLastReleaseFeatureStatsMock,
   }))
-  mock.module(new URL('../libs/core/utils.ts', import.meta.url).pathname, () => ({
-    getDiffCount: (currentCount: number, previousCount: number | null) =>
-      previousCount === null ? null : currentCount - previousCount,
-  }))
-
   return await import(
     new URL(
       `../libs/ui/progress.ts?case=${Date.now()}-${Math.random()}`,
@@ -232,7 +227,7 @@ describe('progress helpers', () => {
 })
 
 describe('displayExtractionPlan', () => {
-  test('renders latest/new/skip flags and formatted bbox/output details', async () => {
+  test('renders latest/new flags plus division details including GERS id', async () => {
     const { displayExtractionPlan } = await loadProgressModule()
 
     displayExtractionPlan(createContext())
@@ -243,9 +238,168 @@ describe('displayExtractionPlan', () => {
     assert.match(message, /\(latest\)/)
     assert.match(message, /\(new\)/)
     assert.match(message, /Central/)
+    assert.match(message, /division-1/)
     assert.match(message, /locality/)
     assert.match(message, /114\.12346 , 22\.3 , 114\.4 , 22/)
     assert.match(message, /data/)
+  })
+
+  test('omits GERS id when the extraction plan is bbox scoped', async () => {
+    const { displayExtractionPlan } = await loadProgressModule()
+
+    displayExtractionPlan(
+      createContext({
+        target: 'bbox',
+        divisionId: null,
+        division: null,
+        spatialFrame: 'bbox',
+      }),
+    )
+
+    const [message] = noteMock.mock.calls[0] as [string, string]
+    assert.doesNotMatch(message, /GERS ID/)
+    assert.doesNotMatch(message, /Subtype/)
+    assert.doesNotMatch(message, /Central/)
+  })
+})
+
+describe('snapshot progress rendering', () => {
+  test('does not print an initial empty table before the first row change', async () => {
+    const { displayTableHeader } = await loadProgressModule()
+    const originalLog = console.log
+    const calls: unknown[][] = []
+    console.log = ((...args: unknown[]) => {
+      calls.push(args)
+    }) as typeof console.log
+
+    try {
+      displayTableHeader(createContext())
+      await Promise.resolve()
+    } finally {
+      console.log = originalLog
+    }
+
+    assert.equal(calls.length, 0)
+  })
+
+  test('coalesces active-table updates into one full-table snapshot', async () => {
+    const { displayTableHeader, updateProgressDisplay, updateProgressStatus } =
+      await loadProgressModule()
+    const originalLog = console.log
+    const calls: unknown[][] = []
+    console.log = ((...args: unknown[]) => {
+      calls.push(args)
+    }) as typeof console.log
+
+    try {
+      displayTableHeader(
+        createContext({
+          featureTypes: ['building', 'segment'],
+          featureNameWidth: 16,
+          indexWidth: 5,
+          themeMapping: {
+            building: 'buildings',
+            segment: 'transportation',
+          },
+        }),
+      )
+      updateProgressDisplay(
+        'building',
+        0,
+        2,
+        createProgressState({
+          isProcessing: true,
+          activeStage: 'bbox',
+          currentMessage: 'Filtering buildings',
+        }),
+        16,
+        5,
+        7,
+      )
+      updateProgressStatus('Filtering buildings')
+      await Promise.resolve()
+    } finally {
+      console.log = originalLog
+    }
+
+    assert.equal(calls.length, 1)
+    const snapshot = stripAnsi((calls[0]?.[0] as string) || '')
+    assert.match(snapshot, /FEATURE/)
+    assert.match(snapshot, /\[1\/2\]/)
+    assert.match(snapshot, /\[2\/2\]/)
+    assert.match(snapshot, /building/)
+    assert.match(snapshot, /segment/)
+    assert.match(snapshot, /Filtering buildings/)
+  })
+
+  test('ignores status-only updates when the table body has not changed', async () => {
+    const { displayTableHeader, updateProgressDisplay, updateProgressStatus } =
+      await loadProgressModule()
+    const originalLog = console.log
+    const calls: unknown[][] = []
+    console.log = ((...args: unknown[]) => {
+      calls.push(args)
+    }) as typeof console.log
+
+    try {
+      displayTableHeader(createContext())
+      updateProgressDisplay(
+        'building',
+        0,
+        1,
+        createProgressState({
+          isProcessing: true,
+          activeStage: 'bbox',
+          currentMessage: 'Preparing buildings',
+        }),
+        16,
+        5,
+        7,
+      )
+      await Promise.resolve()
+      updateProgressStatus('Obtaining every building in the bbox')
+      await Promise.resolve()
+    } finally {
+      console.log = originalLog
+    }
+
+    assert.equal(calls.length, 1)
+    const snapshot = stripAnsi((calls[0]?.[0] as string) || '')
+    assert.match(snapshot, /Preparing buildings/)
+    assert.doesNotMatch(snapshot, /Obtaining every building in the bbox/)
+  })
+})
+
+describe('live progress rendering', () => {
+  test('uses in-place stdout rendering when stdout is a TTY', async () => {
+    const originalIsTTY = process.stdout.isTTY
+    const originalWrite = process.stdout.write.bind(process.stdout)
+    const writes: string[] = []
+
+    Object.defineProperty(process.stdout, 'isTTY', {
+      configurable: true,
+      value: true,
+    })
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      writes.push(typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString())
+      return true
+    }) as typeof process.stdout.write
+
+    try {
+      const { displayTableHeader, finalizeProgressDisplay } = await loadProgressModule()
+      displayTableHeader(createContext())
+      finalizeProgressDisplay()
+    } finally {
+      process.stdout.write = originalWrite
+      Object.defineProperty(process.stdout, 'isTTY', {
+        configurable: true,
+        value: originalIsTTY,
+      })
+    }
+
+    assert.equal(writes.length > 0, true)
+    assert.match(stripAnsi(writes[0] || ''), /FEATURE/)
+    assert.match(stripAnsi(writes[0] || ''), /\[1\/1\]/)
   })
 })
 

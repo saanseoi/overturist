@@ -284,6 +284,7 @@ describe('count helpers', () => {
       hasArea: true,
       areaKm2: 18.25,
     })
+    assert.match(String(runDuckDBQueryMock.mock.calls[0]?.[0] ?? ''), /LOAD spatial;/)
   })
 
   test('coerces stringified DuckDB feature stats into numeric values', async () => {
@@ -649,7 +650,7 @@ describe('feature extraction queries', () => {
     assert.equal(finalQuery.includes('ST_Intersects'), true)
   })
 
-  test('pins division_area selection to the selected division identity', async () => {
+  test('excludes ancestor division_area rows while preserving ordinary spatial matches', async () => {
     const { getFeaturesForSpatialWithConnection } = await loadQueriesModule()
     const connection = createConnection([
       { count: 4, polygon_count: 4, area_km2: 8 },
@@ -660,6 +661,14 @@ describe('feature extraction queries', () => {
       connection as never,
       createCtx({
         divisionId: 'gers:selected',
+        division: createDivision('gers:selected', {
+          hierarchies: [
+            [
+              { division_id: 'gers:parent', subtype: 'region', name: 'Parent' },
+              { division_id: 'gers:selected', subtype: 'locality', name: 'Selected' },
+            ],
+          ],
+        }),
         frameDivisionId: 'gers:parent',
       }),
       'division_area',
@@ -668,7 +677,8 @@ describe('feature extraction queries', () => {
     )
 
     const finalQuery = connection.queries.at(-2) ?? ''
-    assert.equal(finalQuery.includes("division_id = 'gers:selected'"), true)
+    assert.equal(finalQuery.includes("division_id NOT IN ('gers:parent')"), true)
+    assert.equal(finalQuery.includes("division_id = 'gers:selected'"), false)
     assert.equal(finalQuery.includes('ST_Intersects'), true)
   })
 

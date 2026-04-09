@@ -20,8 +20,7 @@ const AREA_DIFF_COLUMN_WIDTH = 10
 
 type ProgressTableState = {
   isActive: boolean
-  headerLines: string[]
-  rowLines: string[]
+  renderMode: 'live' | 'snapshot'
   rowStates: Array<{
     featureType: string
     index: number
@@ -30,19 +29,33 @@ type ProgressTableState = {
     featureNameWidth: number
     indexWidth: number
     countWidth: number
+    renderedLine?: string
   } | null>
-  lineCount: number
+  featureNameWidth: number
+  indexWidth: number
+  countWidth: number
   statusMessage: string
+  renderScheduled: boolean
+  pendingForceRender: boolean
+  lastRenderedTable: string | null
+  lastRenderedSnapshot: string | null
+  lineCount: number
   spinnerTimer: ReturnType<typeof setInterval> | null
 }
 
 const progressTableState: ProgressTableState = {
   isActive: false,
-  headerLines: [],
-  rowLines: [],
+  renderMode: 'snapshot',
   rowStates: [],
-  lineCount: 0,
+  featureNameWidth: 0,
+  indexWidth: 0,
+  countWidth: 7,
   statusMessage: 'Waiting to start',
+  renderScheduled: false,
+  pendingForceRender: false,
+  lastRenderedTable: null,
+  lastRenderedSnapshot: null,
+  lineCount: 0,
   spinnerTimer: null,
 }
 
@@ -61,11 +74,13 @@ export function displayExtractionPlan(ctx: ControlContext): void {
   const bboxText = bbox ? formatBboxPath(bbox) : 'No bounding box (full dataset)'
   const outputDirText = outputDir ? formatPath(outputDir) : 'No output directory'
   const divisionName = ctx.division?.names?.primary || ctx.divisionId || '-'
+  const divisionId = ctx.divisionId || ctx.division?.id || '-'
   const divisionSubtype = ctx.division?.subtype || '-'
   const divisionLines =
     ctx.target === 'division'
       ? [
           `${kleur.bold('Division')}     ${kleur.cyan(divisionName)}`,
+          `${kleur.bold('GERS ID')}      ${kleur.yellow(divisionId)}`,
           `${kleur.bold('Subtype')}      ${kleur.magenta(divisionSubtype)}`,
         ]
       : []
@@ -94,11 +109,10 @@ export function displayTableHeader(ctx: ControlContext): void {
   const countWidth = getCountColumnWidth(ctx.target)
 
   progressTableState.isActive = true
-  progressTableState.headerLines = buildProgressHeader(
-    ctx.featureNameWidth,
-    ctx.indexWidth,
-    countWidth,
-  )
+  progressTableState.renderMode = shouldUseLiveProgressMode() ? 'live' : 'snapshot'
+  progressTableState.featureNameWidth = ctx.featureNameWidth
+  progressTableState.indexWidth = ctx.indexWidth
+  progressTableState.countWidth = countWidth
   progressTableState.rowStates = ctx.featureTypes.map((featureType, index) => {
     const progress: ProgressState = {
       bboxComplete: false,
@@ -125,28 +139,21 @@ export function displayTableHeader(ctx: ControlContext): void {
       countWidth,
     }
   })
-  progressTableState.rowLines = progressTableState.rowStates.map(rowState =>
-    rowState
-      ? renderProgressRow(
-          rowState.featureType,
-          rowState.index,
-          rowState.total,
-          rowState.progress,
-          rowState.featureNameWidth,
-          rowState.indexWidth,
-          rowState.countWidth,
-        )
-      : '',
-  )
   progressTableState.statusMessage = 'Waiting to start'
+  progressTableState.pendingForceRender = false
+  progressTableState.lastRenderedTable = null
+  progressTableState.lastRenderedSnapshot = null
+  progressTableState.lineCount = 0
 
-  if (!progressTableState.spinnerTimer && process.stdout.isTTY) {
+  if (progressTableState.renderMode === 'live') {
+    if (progressTableState.spinnerTimer) {
+      clearInterval(progressTableState.spinnerTimer)
+    }
     progressTableState.spinnerTimer = setInterval(() => {
-      renderProgressTable()
+      renderLiveProgressTable()
     }, 250)
+    renderLiveProgressTable()
   }
-
-  renderProgressTable()
 }
 
 /**
@@ -168,28 +175,30 @@ export function updateProgressDisplay(
   indexWidth: number,
   countWidth = 7,
 ): void {
-  const line = renderProgressRow(
-    featureType,
-    index,
-    total,
-    progress,
-    featureNameWidth,
-    indexWidth,
-    countWidth,
-  )
-
   if (!progressTableState.isActive) {
-    const [headerLine, separatorLine] = buildProgressHeader(
+    const table = buildProgressTable(
+      [
+        {
+          featureType,
+          index,
+          total,
+          progress,
+          featureNameWidth,
+          indexWidth,
+          countWidth,
+        },
+      ],
       featureNameWidth,
       indexWidth,
       countWidth,
     )
-    console.log(headerLine)
-    console.log(separatorLine)
-    console.log(line)
+    console.log(`${table}\n${buildStatusLine(formatStatusLine(progress))}`)
     return
   }
 
+  progressTableState.featureNameWidth = featureNameWidth
+  progressTableState.indexWidth = indexWidth
+  progressTableState.countWidth = countWidth
   progressTableState.rowStates[index] = {
     featureType,
     index,
@@ -199,9 +208,8 @@ export function updateProgressDisplay(
     indexWidth,
     countWidth,
   }
-  progressTableState.rowLines[index] = line
   progressTableState.statusMessage = formatStatusLine(progress)
-  renderProgressTable()
+  scheduleProgressRender()
 }
 
 /**
@@ -209,13 +217,13 @@ export function updateProgressDisplay(
  * @param message - User-facing status message
  * @returns Nothing. Re-renders the progress block.
  */
-export function updateProgressStatus(message: string): void {
+export function updateProgressStatus(message: string, forceRender = false): void {
   if (!progressTableState.isActive) {
     return
   }
 
   progressTableState.statusMessage = message
-  renderProgressTable()
+  scheduleProgressRender(forceRender)
 }
 
 /**
@@ -227,18 +235,26 @@ export function finalizeProgressDisplay(): void {
     return
   }
 
-  process.stdout.write('\n')
-
   if (progressTableState.spinnerTimer) {
     clearInterval(progressTableState.spinnerTimer)
   }
 
+  if (progressTableState.renderMode === 'live' && progressTableState.lineCount > 0) {
+    process.stdout.write('\n')
+  }
+
   progressTableState.isActive = false
-  progressTableState.headerLines = []
-  progressTableState.rowLines = []
+  progressTableState.renderMode = 'snapshot'
   progressTableState.rowStates = []
-  progressTableState.lineCount = 0
+  progressTableState.featureNameWidth = 0
+  progressTableState.indexWidth = 0
+  progressTableState.countWidth = 7
   progressTableState.statusMessage = 'Waiting to start'
+  progressTableState.renderScheduled = false
+  progressTableState.pendingForceRender = false
+  progressTableState.lastRenderedTable = null
+  progressTableState.lastRenderedSnapshot = null
+  progressTableState.lineCount = 0
   progressTableState.spinnerTimer = null
 }
 
@@ -331,10 +347,21 @@ export async function handleSkippedFeature(
   })
 
   if (progressTableState.isActive) {
-    progressTableState.rowStates[index] = null
-    progressTableState.rowLines[index] = skippedProgress
+    progressTableState.featureNameWidth = controlContext.featureNameWidth
+    progressTableState.indexWidth = controlContext.indexWidth
+    progressTableState.countWidth = countWidth
+    progressTableState.rowStates[index] = {
+      featureType,
+      index,
+      total: controlContext.featureTypes.length,
+      progress: createSkippedProgressState(controlContext),
+      featureNameWidth: controlContext.featureNameWidth,
+      indexWidth: controlContext.indexWidth,
+      countWidth,
+      renderedLine: skippedProgress,
+    }
     progressTableState.statusMessage = `Skipping ${kleur.cyan(`${controlContext.themeMapping[featureType]}/${featureType}`)}`
-    renderProgressTable()
+    scheduleProgressRender()
     return
   }
 
@@ -596,8 +623,12 @@ function renderCell(
   }
 
   if (state === 'active') {
-    const frameIndex = Math.floor(Date.now() / 250) % ACTIVE_CELL_FRAMES.length
-    return kleur.yellow(ACTIVE_CELL_FRAMES[frameIndex])
+    if (progressTableState.renderMode === 'live') {
+      const frameIndex = Math.floor(Date.now() / 250) % ACTIVE_CELL_FRAMES.length
+      return kleur.yellow(ACTIVE_CELL_FRAMES[frameIndex])
+    }
+
+    return kleur.yellow(ACTIVE_CELL_FRAMES[ACTIVE_CELL_FRAMES.length - 1])
   }
 
   return kleur.white(PLANNED_CELL)
@@ -622,9 +653,34 @@ function formatStatusLine(progress: ProgressState): string {
  * @returns Styled footer line.
  */
 function buildStatusLine(message: string): string {
-  const frameIndex = Math.floor(Date.now() / 250) % STATUS_SPINNER_FRAMES.length
-  const frame = STATUS_SPINNER_FRAMES[frameIndex]
-  return `${kleur.yellow(frame)} ${message}`
+  if (progressTableState.renderMode === 'live') {
+    const frameIndex = Math.floor(Date.now() / 250) % STATUS_SPINNER_FRAMES.length
+    return `${kleur.yellow(STATUS_SPINNER_FRAMES[frameIndex])} ${message}`
+  }
+
+  return `${kleur.yellow('•')} ${message}`
+}
+
+/**
+ * Creates a placeholder progress state for skipped rows retained in the shared table model.
+ * @param controlContext - Control context for the active run
+ * @returns Progress state that renders as skipped outside the normal active/completed flow
+ */
+function createSkippedProgressState(controlContext: ControlContext): ProgressState {
+  return {
+    bboxComplete: false,
+    geomComplete: false,
+    hasGeometryPass: hasExactSpatialPass(controlContext),
+    isProcessing: false,
+    activeStage: null,
+    hasCountMetric: false,
+    featureCount: 0,
+    diffCount: null,
+    hasAreaMetric: false,
+    featureAreaKm2: null,
+    diffAreaKm2: null,
+    currentMessage: null,
+  }
 }
 
 /**
@@ -659,43 +715,156 @@ function padDisplayStart(value: string, width: number): string {
 }
 
 /**
- * Re-renders the entire progress block in place.
- * @returns Nothing. Writes directly to stdout.
+ * Requests an in-place refresh of the current progress table without changing row ownership.
+ * @returns Nothing. Schedules a redraw when the table is active.
  */
-function renderProgressTable(): void {
+export function refreshProgressDisplay(): void {
   if (!progressTableState.isActive) {
     return
   }
 
-  const sections = [
-    ...progressTableState.headerLines,
-    ...progressTableState.rowLines.map((line, index) => {
-      const rowState = progressTableState.rowStates[index]
-      if (!rowState) {
-        return line
+  scheduleProgressRender(true)
+}
+
+/**
+ * Schedules a single serialized snapshot flush for the current table state.
+ * @returns Nothing. Coalesces repeated row updates into one snapshot render.
+ */
+function scheduleProgressRender(forceRender = false): void {
+  if (progressTableState.renderMode === 'live') {
+    if (progressTableState.renderScheduled) {
+      return
+    }
+
+    progressTableState.renderScheduled = true
+    queueMicrotask(() => {
+      progressTableState.renderScheduled = false
+
+      if (!progressTableState.isActive) {
+        return
       }
 
-      return renderProgressRow(
-        rowState.featureType,
-        rowState.index,
-        rowState.total,
-        rowState.progress,
-        rowState.featureNameWidth,
-        rowState.indexWidth,
-        rowState.countWidth,
-      )
-    }),
+      renderLiveProgressTable()
+    })
+    return
+  }
+
+  progressTableState.pendingForceRender =
+    progressTableState.pendingForceRender || forceRender
+
+  if (progressTableState.renderScheduled) {
+    return
+  }
+
+  progressTableState.renderScheduled = true
+  queueMicrotask(() => {
+    progressTableState.renderScheduled = false
+
+    if (!progressTableState.isActive) {
+      return
+    }
+
+    const table = buildProgressTable(
+      progressTableState.rowStates,
+      progressTableState.featureNameWidth,
+      progressTableState.indexWidth,
+      progressTableState.countWidth,
+    )
+    const forceSnapshot = progressTableState.pendingForceRender
+    progressTableState.pendingForceRender = false
+
+    if (table === progressTableState.lastRenderedTable && !forceSnapshot) {
+      return
+    }
+
+    const snapshot = `${table}\n${buildStatusLine(progressTableState.statusMessage)}`
+    if (snapshot === progressTableState.lastRenderedSnapshot) {
+      return
+    }
+
+    progressTableState.lastRenderedTable = table
+    progressTableState.lastRenderedSnapshot = snapshot
+    console.log(snapshot)
+  })
+}
+
+/**
+ * Re-renders the active progress table in place for trusted TTY terminals.
+ * @returns Nothing. Writes directly to stdout.
+ */
+function renderLiveProgressTable(): void {
+  if (!progressTableState.isActive || progressTableState.renderMode !== 'live') {
+    return
+  }
+
+  const sections = [
+    buildProgressTable(
+      progressTableState.rowStates,
+      progressTableState.featureNameWidth,
+      progressTableState.indexWidth,
+      progressTableState.countWidth,
+    ),
     '',
     buildStatusLine(progressTableState.statusMessage),
   ]
+  const output = `${sections.join('\n')}\n`
 
-  // Rewind to the start of the existing block so the whole table can be redrawn in place.
-  if (process.stdout.isTTY && progressTableState.lineCount > 0) {
+  if (progressTableState.lineCount > 0) {
     readline.moveCursor(process.stdout, 0, -progressTableState.lineCount)
     readline.cursorTo(process.stdout, 0)
     readline.clearScreenDown(process.stdout)
   }
 
-  process.stdout.write(`${sections.join('\n')}\n`)
-  progressTableState.lineCount = sections.length
+  process.stdout.write(output)
+  progressTableState.lineCount = output.trimEnd().split('\n').length
+}
+
+/**
+ * Detects whether the current terminal can safely use the in-place live renderer.
+ * @returns True when stdout is a TTY we can redraw in place
+ */
+function shouldUseLiveProgressMode(): boolean {
+  return Boolean(process.stdout.isTTY)
+}
+
+/**
+ * Builds the table portion of the current progress snapshot.
+ * @param rowStates - Ordered row-state slots for the current run
+ * @param featureNameWidth - Width of the feature-name column
+ * @param indexWidth - Width of the queue-index column
+ * @param countWidth - Width of the count column
+ * @returns Table block ready to be combined with a footer line
+ */
+function buildProgressTable(
+  rowStates: ProgressTableState['rowStates'],
+  featureNameWidth: number,
+  indexWidth: number,
+  countWidth: number,
+): string {
+  const [headerLine, separatorLine] = buildProgressHeader(
+    featureNameWidth,
+    indexWidth,
+    countWidth,
+  )
+  const rowLines = rowStates.map(rowState => {
+    if (!rowState) {
+      return ''
+    }
+
+    if (rowState.renderedLine) {
+      return rowState.renderedLine
+    }
+
+    return renderProgressRow(
+      rowState.featureType,
+      rowState.index,
+      rowState.total,
+      rowState.progress,
+      rowState.featureNameWidth,
+      rowState.indexWidth,
+      rowState.countWidth,
+    )
+  })
+
+  return [headerLine, separatorLine, ...rowLines].join('\n')
 }
