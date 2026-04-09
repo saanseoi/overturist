@@ -581,6 +581,44 @@ export async function getCachedSearchResults(
 }
 
 /**
+ * Resets the last-run timestamp for a cached search entry.
+ * @param version - The release version associated with the cached search
+ * @param adminLevel - The administrative level associated with the cached search
+ * @param term - The cached search term
+ * @returns Updated cached search item, or null when the cache entry is unavailable
+ * @remarks This preserves the original creation time so history ordering can reflect the latest rerun.
+ */
+export async function touchCachedSearchResults(
+  version: string,
+  adminLevel: number,
+  term: string,
+): Promise<SearchHistoryItem | null> {
+  const cachedResults = await getCachedSearchResults(version, adminLevel, term)
+
+  if (!cachedResults) {
+    return null
+  }
+
+  const timestamp = new Date().toISOString()
+  const updatedResults: CachedSearchResults = {
+    createdAt: cachedResults.createdAt,
+    lastRunAt: timestamp,
+    version: cachedResults.version,
+    adminLevel: cachedResults.adminLevel,
+    term: cachedResults.term,
+    totalCount: cachedResults.totalCount,
+    results: cachedResults.results,
+  }
+
+  await writeJsonCache(getSearchCachePath(version, adminLevel, term), updatedResults)
+
+  return {
+    ...updatedResults,
+    cachePath: cachedResults.cachePath,
+  }
+}
+
+/**
  * Gets all cached search histories across all versions and admin levels.
  * @returns Promise<Array> of search history entries sorted by last run time (newest first)
  */

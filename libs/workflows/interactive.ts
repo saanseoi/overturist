@@ -6,6 +6,7 @@ import {
   cacheDivision,
   getCachedDivision,
   getCachedSearchResults,
+  touchCachedSearchResults,
   getVersionsInCache,
 } from '../data/cache'
 import { warmReleaseCacheForInteractiveStartup } from '../data/releases'
@@ -252,6 +253,12 @@ async function handleRepeatSearchWorkflow(
   if (!searchItem) {
     return // User cancelled or no history available
   }
+
+  await touchCachedSearchResults(
+    searchItem.version,
+    searchItem.adminLevel,
+    searchItem.term,
+  )
 
   const cachedResults = await resolveRepeatSearchResults(searchItem)
 

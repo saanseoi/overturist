@@ -300,6 +300,33 @@ describe('search cache', () => {
     )
   })
 
+  test('refreshes lastRunAt when an existing cached search is repeated', async () => {
+    const { touchCachedSearchResults, getCachedSearchResults } = await loadCacheModule()
+    await writeJsonFile(path.join(cacheRoot, '2026-03-18.0/search/2/central.json'), {
+      createdAt: '2026-03-18T00:00:00.000Z',
+      lastRunAt: '2026-03-20T00:00:00.000Z',
+      version: '2026-03-18.0',
+      adminLevel: 2,
+      term: 'Central',
+      totalCount: 1,
+      results: [createDivision('gers:central')],
+    })
+
+    const updated = await touchCachedSearchResults('2026-03-18.0', 2, 'Central')
+    const cached = await getCachedSearchResults('2026-03-18.0', 2, 'Central')
+
+    assert.ok(updated)
+    assert.ok(cached)
+    assert.equal(updated.createdAt, '2026-03-18T00:00:00.000Z')
+    assert.equal(cached.createdAt, '2026-03-18T00:00:00.000Z')
+    assert.notEqual(updated.lastRunAt, '2026-03-20T00:00:00.000Z')
+    assert.equal(updated.lastRunAt, cached.lastRunAt)
+    assert.ok(
+      new Date(updated.lastRunAt ?? '').getTime() >
+        Date.parse('2026-03-20T00:00:00.000Z'),
+    )
+  })
+
   test('detects cached searches only when json files exist in admin-level folders', async () => {
     const { hasCachedSearches } = await loadCacheModule()
     await fs.mkdir(path.join(cacheRoot, '2026-03-18.0/search/2'), {
