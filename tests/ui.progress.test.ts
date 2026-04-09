@@ -250,6 +250,44 @@ describe('displayExtractionPlan', () => {
 })
 
 describe('handleSkippedFeature', () => {
+  test('renders count and area from the existing output and compares them to the previous release', async () => {
+    const { handleSkippedFeature } = await loadProgressModule()
+    const originalLog = console.log
+    const calls: unknown[][] = []
+    console.log = ((...args: unknown[]) => {
+      calls.push(args)
+    }) as typeof console.log
+    getFeatureStatsMock.mockResolvedValue({
+      count: 12,
+      hasArea: true,
+      areaKm2: 48.25,
+    })
+    getLastReleaseFeatureStatsMock.mockResolvedValue({
+      count: 10,
+      hasArea: true,
+      areaKm2: 40.25,
+    })
+
+    try {
+      await handleSkippedFeature(
+        createContext(),
+        'building',
+        0,
+        '/tmp/existing.parquet',
+      )
+    } finally {
+      console.log = originalLog
+    }
+
+    const output = stripAnsi((calls[0]?.[0] as string) || '')
+    assert.match(output, /\[1\/1\]/)
+    assert.match(output, /12/)
+    assert.match(output, /\+2/)
+    assert.match(output, /48\.3/)
+    assert.match(output, /\+8/)
+    assert.doesNotMatch(output, /NEW/)
+  })
+
   test('falls back to zero count when the existing output cannot be counted', async () => {
     const { handleSkippedFeature } = await loadProgressModule()
     const originalLog = console.log

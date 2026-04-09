@@ -302,15 +302,16 @@ export async function handleSkippedFeature(
   }
 
   const lastReleaseStats = await getLastReleaseFeatureStats(controlContext, featureType)
+  const hasAreaMetric = existingStats.hasArea || (lastReleaseStats?.hasArea ?? false)
   const diffText = toDiffText(
     getDiffCount(existingStats.count, lastReleaseStats?.count ?? null),
   )
   const areaText = toAreaText(existingStats.areaKm2, existingStats.hasArea)
   const areaDiffText = toAreaDiffText(
-    existingStats.hasArea || (lastReleaseStats?.hasArea ?? false)
+    hasAreaMetric
       ? getDiffCount(existingStats.areaKm2 ?? 0, lastReleaseStats?.areaKm2 ?? null)
       : null,
-    existingStats.hasArea || (lastReleaseStats?.hasArea ?? false),
+    hasAreaMetric,
   )
   const geomState = hasExactSpatialPass(controlContext) ? 'skipped' : 'na'
 
@@ -323,7 +324,7 @@ export async function handleSkippedFeature(
     countWidth,
     bboxCell: renderCell('skipped'),
     geomCell: renderCell(geomState),
-    countText: existingStats.count.toString(),
+    countText: toCountText(existingStats.count, true),
     diffText,
     areaText,
     areaDiffText,
