@@ -11,6 +11,9 @@
   },
   "homepage": "https://github.com/saanseoi/overturist#readme",
   "main": "overturist.ts",
+  "bin": {
+    "overturist": "./bin/overturist"
+  },
   "directories": {
     "bin": "bin"
   },

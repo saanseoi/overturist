@@ -30,6 +30,8 @@ Requires [Bun](https://bun.sh/).
 bunx --package @saanseoi/overturist overturist
 ```
 
+This package currently targets Linux x64 and requires Bun `>=1.3.0`.
+
 ### Install Globally
 
 The published package currently targets Linux x64 because it depends on `@duckdb/node-bindings-linux-x64`.
