@@ -359,14 +359,27 @@ function buildFeatureStatsQuery(filePathExpression: string): string {
  * @param stats - Row returned by the aggregate stats query
  * @returns Parsed feature stats with area omitted for non-polygon datasets
  */
+function coerceNumericStat(value: number | string | null | undefined): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+
+  if (typeof value === 'string') {
+    const parsedValue = Number(value)
+    return Number.isFinite(parsedValue) ? parsedValue : 0
+  }
+
+  return 0
+}
+
 function normalizeFeatureStats(stats?: {
-  count?: number
-  polygon_count?: number
-  area_km2?: number
+  count?: number | string
+  polygon_count?: number | string
+  area_km2?: number | string
 }): FeatureStats {
-  const count = stats?.count ?? 0
-  const polygonCount = stats?.polygon_count ?? 0
-  const areaKm2 = stats?.area_km2 ?? 0
+  const count = coerceNumericStat(stats?.count)
+  const polygonCount = coerceNumericStat(stats?.polygon_count)
+  const areaKm2 = coerceNumericStat(stats?.area_km2)
 
   return {
     count,

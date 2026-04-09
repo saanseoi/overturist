@@ -286,6 +286,21 @@ describe('count helpers', () => {
     })
   })
 
+  test('coerces stringified DuckDB feature stats into numeric values', async () => {
+    const { getFeatureStats } = await loadQueriesModule()
+    runDuckDBQueryMock.mockImplementation(async () => ({
+      stdout: JSON.stringify([{ count: '42', polygon_count: '5', area_km2: '18.25' }]),
+      stderr: '',
+      exitCode: 0,
+    }))
+
+    assert.deepEqual(await getFeatureStats('/tmp/file.parquet'), {
+      count: 42,
+      hasArea: true,
+      areaKm2: 18.25,
+    })
+  })
+
   test('returns null when previous release context or files are unavailable', async () => {
     const { getLastReleaseFeatureStats } = await loadQueriesModule()
 
