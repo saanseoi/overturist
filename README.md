@@ -28,19 +28,15 @@ Friendly CLI to get [Overture](https://overturemaps.org/) [Maps](https://explore
 
 ## Installation
 
-Requires [Bun](https://bun.sh/).
+Requires [Bun](https://bun.sh/) `>=1.3.0`, and currently only targets Linux because it depends on `@duckdb/node-bindings-linux-x64`.
 
 ### Run Without Installing
 
 ```bash
-bunx --package @saanseoi/overturist overturist
+bunx @saanseoi/overturist
 ```
 
-This package currently targets Linux x64 and requires Bun `>=1.3.0`.
-
 ### Install Globally
-
-The published package currently targets Linux x64 because it depends on `@duckdb/node-bindings-linux-x64`.
 
 ```bash
 bun install -g @saanseoi/overturist
@@ -85,7 +81,7 @@ CLI reference.
 - [Output layout and cache behavior](docs/output-and-cache.md)
 - [Development notes](docs/development.md)
 
-## Limits 
+## Limitations
 
 The Overture Maps Foundation has a monthly release cadence and keeps 60 days of releases available in S3. So usually only the latest 2 releases are available for download.
 
