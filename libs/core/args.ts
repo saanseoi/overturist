@@ -165,7 +165,6 @@ const argConfig = {
  * @remarks Parsing happens inside this function so tests can supply their own argv.
  */
 export function handleArguments(argv: string[] = process.argv): CliArgs {
-  rejectRemovedLegacyFlags(argv)
   const parsedArgs = parseArgs(argv)
 
   // Handle display flags first (help, examples)

@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.1.2 - 2026-05-27
+
+- Update dependencies
+- Fix compatibility with Bun v1.3.14
+
 ## 0.1.1 - 2026-04-09
 
 - Respect geometry's embedded CRS for correct area calculation

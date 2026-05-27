@@ -79,6 +79,7 @@ CLI reference.
 - [Configuration and environment variables](docs/configuration.md)
 - [Spatial filtering and geometry modes](docs/spatial-filtering.md)
 - [Output layout and cache behavior](docs/output-and-cache.md)
+- [Release process](docs/release.md)
 - [Development notes](docs/development.md)
 
 ## Limitations
