@@ -3,51 +3,13 @@ import { describe, test } from 'bun:test'
 import kleur from 'kleur'
 import { handleArguments } from '../libs/core'
 
-function withPatchedExit<T>(fn: () => T): {
-  error: unknown
-  exitCode: number | undefined
-} {
-  const originalExit = process.exit
-  let exitCode: number | undefined
-
-  process.exit = ((code?: number) => {
-    exitCode = code
-    throw new Error(`process.exit:${code}`)
-  }) as typeof process.exit
-
-  try {
-    fn()
-    return { error: undefined, exitCode }
-  } catch (error) {
-    return { error, exitCode }
-  } finally {
-    process.exit = originalExit
-  }
-}
-
-function captureConsoleOutput<T>(fn: () => T): {
-  logs: string[]
-  error: unknown
-  exitCode: number | undefined
-} {
-  const originalLog = console.log
-  const logs: string[] = []
-
-  console.log = (...args: unknown[]) => {
-    logs.push(args.join(' '))
-  }
-
-  try {
-    const result = withPatchedExit(fn)
-
-    return {
-      logs,
-      error: result.error,
-      exitCode: result.exitCode,
-    }
-  } finally {
-    console.log = originalLog
-  }
+function runInlineBun(script: string) {
+  return Bun.spawnSync({
+    cmd: ['bun', '-e', script],
+    cwd: process.cwd(),
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
 }
 
 describe('handleArguments', () => {
@@ -197,12 +159,12 @@ describe('handleArguments', () => {
   })
 
   test('exits for invalid geometry values', () => {
-    const result = withPatchedExit(() =>
-      handleArguments(['bun', 'overturist.ts', 'get', '--geometry', 'none']),
+    const result = runInlineBun(
+      "import { handleArguments } from './libs/core/index.ts'; handleArguments(['bun', 'overturist.ts', 'get', '--geometry', 'none'])",
     )
 
     assert.equal(result.exitCode, 1)
-    assert.match(String(result.error), /process\.exit:1/)
+    assert.match(result.stdout.toString(), /Invalid SPATIAL_GEOMETRY: none/)
   })
 
   test('renders geospatial help values in a distinct color', () => {
@@ -210,13 +172,12 @@ describe('handleArguments', () => {
     kleur.enabled = true
 
     try {
-      const result = captureConsoleOutput(() =>
-        handleArguments(['bun', 'overturist.ts', '--help']),
+      const result = runInlineBun(
+        "import kleur from 'kleur'; kleur.enabled = true; import { handleArguments } from './libs/core/index.ts'; handleArguments(['bun', 'overturist.ts', '--help'])",
       )
-      const output = result.logs.join('\n')
+      const output = result.stdout.toString()
 
       assert.equal(result.exitCode, 0)
-      assert.match(String(result.error), /process\.exit:0/)
       assert.match(
         output,
         new RegExp(

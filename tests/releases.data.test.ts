@@ -47,6 +47,14 @@ const spinnerState = {
   message: mock(() => {}),
 }
 
+function daysAgoIso(daysAgo: number): string {
+  return new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000).toISOString()
+}
+
+function isoDateDaysAgo(daysAgo: number): string {
+  return daysAgoIso(daysAgo).slice(0, 10)
+}
+
 function createConfig(overrides: Partial<Config> = {}): Config {
   return {
     locale: 'en',
@@ -423,16 +431,17 @@ describe('initializeReleaseVersion', () => {
 describe('warmReleaseCacheForInteractiveStartup', () => {
   test('starts a refresh when the cached latest release is at least 21 days old and last check is stale', async () => {
     const { warmReleaseCacheForInteractiveStartup } = await loadReleasesModule()
+    const latestDate = isoDateDaysAgo(30)
     getCachedReleasesMock.mockImplementation(async () => ({
-      lastUpdated: '2026-02-18T00:00:00.000Z',
-      lastChecked: '2026-04-07T00:00:00.000Z',
+      lastUpdated: daysAgoIso(30),
+      lastChecked: daysAgoIso(2),
       source: 'cache',
-      latest: '2026-02-18.0',
+      latest: `${latestDate}.0`,
       totalReleases: 1,
       releases: [
         {
-          version: '2026-02-18.0',
-          date: '2026-02-18',
+          version: `${latestDate}.0`,
+          date: latestDate,
           schema: '2',
           isReleased: true,
           isAvailableOnS3: true,
@@ -448,16 +457,17 @@ describe('warmReleaseCacheForInteractiveStartup', () => {
 
   test('skips startup refresh when the latest release is not yet 21 days old', async () => {
     const { warmReleaseCacheForInteractiveStartup } = await loadReleasesModule()
+    const latestDate = isoDateDaysAgo(7)
     getCachedReleasesMock.mockImplementation(async () => ({
-      lastUpdated: '2026-04-06T00:00:00.000Z',
-      lastChecked: '2026-04-08T12:00:00.000Z',
+      lastUpdated: daysAgoIso(7),
+      lastChecked: daysAgoIso(1),
       source: 'cache',
-      latest: '2026-03-25.0',
+      latest: `${latestDate}.0`,
       totalReleases: 1,
       releases: [
         {
-          version: '2026-03-25.0',
-          date: '2026-03-25',
+          version: `${latestDate}.0`,
+          date: latestDate,
           schema: '2',
           isReleased: true,
           isAvailableOnS3: true,
