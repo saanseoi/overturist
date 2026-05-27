@@ -1,4 +1,13 @@
 #!/usr/bin/env bash
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve the real script location first so package-manager shims still point
+# back to the published package directory instead of their own .bin folder.
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$SCRIPT_DIR/$SOURCE"
+done
+
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 exec bun "$SCRIPT_DIR/../overturist.ts" "$@"
