@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.1.3 - 2026-05-27
+
+- Resolve script resolution for `bunx` invocation
+
 ## 0.1.2 - 2026-05-27
 
 - Update dependencies
