@@ -1,6 +1,6 @@
 # Release Process
 
-This document describes how to cut and publish a new `overturist` release.
+This document describes how to manage release notes with Changesets and publish a new `overturist` release.
 
 ## Release Targets
 
@@ -8,6 +8,32 @@ Each release has two public outputs:
 
 - GitHub release: <https://github.com/saanseoi/overturist/releases>
 - npm package: <https://www.npmjs.com/package/@saanseoi/overturist>
+
+## Changeset Workflow
+
+Contributors should create a changeset whenever a merged change should appear in the next published release.
+
+Create an entry:
+
+```bash
+bun run changeset
+```
+
+Then:
+
+- Select `@saanseoi/overturist`.
+- Choose the semver bump type: `patch`, `minor`, or `major`.
+- Write a short user-facing summary.
+
+Commit the generated Markdown file under [`.changeset/`](../.changeset). Multiple PRs can contribute changesets independently; the next release combines all pending entries.
+
+Useful commands:
+
+```bash
+bun run changeset
+bun run changeset:status
+bun run changeset:version
+```
 
 ## Pre-flight
 
@@ -24,32 +50,40 @@ git tag --list
 
 ## Release Checklist
 
-### 1. Update the version
+### 1. Review pending changesets
 
-Bump the version in `package.json`.
+Inspect the queued release entries:
 
-For `v0.1.2`, the package version should be:
-
-```json
-"version": "0.1.2"
+```bash
+bun run changeset:status
 ```
 
-### 2. Update the changelog
+Make sure the pending summaries and bump types match the release you intend to cut.
 
-Add a new section at the top of [`CHANGELOG.md`](../CHANGELOG.md) using the next released version and release date.
+### 2. Generate the release version and changelog
 
-Example for `v0.1.2`:
+Combine all pending changesets into a version bump and changelog update:
 
-```md
-## 0.1.2 - 2026-05-27
-
-- Update dependencies
-- Fix compatibility with Bun v1.3.14
+```bash
+bun run changeset:version
 ```
 
-Keep the changelog concise and user-facing.
+This updates:
 
-### 3. Validate the release candidate
+- [`package.json`](../package.json)
+- [`CHANGELOG.md`](../CHANGELOG.md)
+
+It also removes the consumed `.changeset/*.md` entry files.
+
+### 3. Review the generated release files
+
+Check that:
+
+- `package.json` has the expected new semver version.
+- `CHANGELOG.md` is concise and user-facing.
+- No unrelated changes were pulled into the release commit.
+
+### 4. Validate the release candidate
 
 Run the standard checks:
 
@@ -67,27 +101,26 @@ bun overturist.ts --help
 
 If the release changes runtime compatibility, also test the affected flow directly.
 
-### 4. Commit the release
+### 5. Commit the release
 
 Create a release commit with a conventional message:
 
 ```bash
-git add package.json CHANGELOG.md
-git add docs/release.md README.md
-git commit -m "chore: release v0.1.2"
+git add package.json CHANGELOG.md bun.lock
+git commit -m "chore: release v0.1.4"
 ```
 
 If other files are part of the release, include them in the same commit.
 
-### 5. Create the git tag
+### 6. Create the git tag
 
 Create an annotated tag that matches the npm/GitHub release version:
 
 ```bash
-git tag -a v0.1.2 -m "v0.1.2"
+git tag -a v0.1.4 -m "v0.1.4"
 ```
 
-### 6. Publish to npm
+### 7. Publish to npm
 
 Run a dry run first:
 
@@ -101,40 +134,31 @@ If the package contents look correct, publish:
 npm publish --access public
 ```
 
-### 7. Push commit and tag
+### 8. Push commit and tag
 
 ```bash
 git push origin <branch-name>
-git push origin v0.1.2
+git push origin v0.1.4
 ```
 
-### 8. Publish the GitHub release
+### 9. Publish the GitHub release
 
-Open <https://github.com/saanseoi/overturist/releases> and create a new release from tag `v0.1.2`.
+Open <https://github.com/saanseoi/overturist/releases> and create a new release from the new tag.
 
 Use the tag title:
 
 ```text
-v0.1.2
+v0.1.4
 ```
 
-Suggested release notes:
-
-```md
-## Changes
-
-- chore: update dependencies
-- fix: compatibility with Bun v1.3.14
-```
-
-Then publish the release.
+You can reuse the generated `CHANGELOG.md` entry as the basis for the GitHub release notes.
 
 ## Post-release Verification
 
 After publishing:
 
 - Confirm the GitHub release is visible with the expected notes.
-- Confirm the npm package page shows `0.1.2`.
+- Confirm the npm package page shows the new version.
 - Verify installability:
 
 ```bash
@@ -143,6 +167,6 @@ bunx @saanseoi/overturist --help
 
 ## Notes
 
-- Git tags use the `v` prefix, for example `v0.1.2`.
-- `CHANGELOG.md` entries use the plain semver number, for example `0.1.2`.
-- The npm package is currently published as `@saanseoi/overturist`.
+- Git tags use the `v` prefix, for example `v0.1.4`.
+- `CHANGELOG.md` entries use the plain semver number, for example `0.1.4`.
+- The npm package is published as `@saanseoi/overturist`.
