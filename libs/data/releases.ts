@@ -17,7 +17,7 @@ import { bail, bailFromSpinner, successExit } from '../core/utils'
 import { scrapeReleaseCalendar } from './web'
 
 const RELEASE_REFRESH_START_DAYS = 21
-const RELEASE_REFRESH_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000
+const RELEASE_REFRESH_CHECK_INTERVAL_MS = 60 * 60 * 1000
 let releaseRefreshPromise: Promise<ReleaseData> | null = null
 
 /**
