@@ -36,6 +36,9 @@
     // Resolve JSON modules
     "resolveJsonModule": true,
 
+    // Load Node ambient types for built-in modules imported via node: specifiers
+    "types": ["node"],
+
     // Allow JavaScript files to be compiled
     "allowJs": false,
 
