@@ -480,6 +480,32 @@ describe('warmReleaseCacheForInteractiveStartup', () => {
 
     assert.equal(getS3ReleasesMock.mock.calls.length, 0)
   })
+
+  test('skips startup refresh when the last check was within the past hour', async () => {
+    const { warmReleaseCacheForInteractiveStartup } = await loadReleasesModule()
+    const latestDate = isoDateDaysAgo(30)
+    getCachedReleasesMock.mockImplementation(async () => ({
+      lastUpdated: daysAgoIso(30),
+      lastChecked: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+      source: 'cache',
+      latest: `${latestDate}.0`,
+      totalReleases: 1,
+      releases: [
+        {
+          version: `${latestDate}.0`,
+          date: latestDate,
+          schema: '2',
+          isReleased: true,
+          isAvailableOnS3: true,
+        },
+      ],
+    }))
+
+    await warmReleaseCacheForInteractiveStartup(createConfig())
+    await Promise.resolve()
+
+    assert.equal(getS3ReleasesMock.mock.calls.length, 0)
+  })
 })
 
 describe('release context helpers', () => {
