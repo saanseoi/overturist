@@ -131,6 +131,7 @@ bun run publish:dry-run
 If the package contents look correct, publish:
 
 ```bash
+npm login
 npm publish --access public
 ```
 
