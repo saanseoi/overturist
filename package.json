@@ -30,6 +30,9 @@
     "typecheck": "tsc --noEmit --project .",
     "test": "bun test",
     "test:watch": "bun test --watch",
+    "changeset": "changeset",
+    "changeset:status": "changeset status --verbose",
+    "changeset:version": "changeset version",
     "lint": "biome lint .",
     "lint:fix": "biome lint --write .",
     "lint:branch": "bunx branch-name-lint .husky/branch-name-lint.json",
@@ -79,6 +82,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.0",
+    "@changesets/cli": "^2.31.0",
     "@commitlint/config-conventional": "^21.0.2",
     "husky": "^9.1.7"
   }
