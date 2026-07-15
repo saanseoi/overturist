@@ -2,4 +2,4 @@
 "@saanseoi/overturist": patch
 ---
 
-Normalize clipped division geometry dimensions and filter clipped division_area slivers
+Normalize clipped geometry for area types, and filter clipped division_area slivers

@@ -614,6 +614,9 @@ describe('feature extraction queries', () => {
       connection.queries.some(query => query.includes('ST_Intersection')),
       true,
     )
+    const finalQuery = connection.queries.at(-2) ?? ''
+    assert.match(finalQuery, /ST_CollectionExtract\([\s\S]*,\s*3\s*\)/)
+    assert.equal(finalQuery.includes('ST_Area(ST_Transform(clipped_geometry'), false)
   })
 
   test('retains only linear division_boundary geometry after clipping', async () => {
@@ -636,6 +639,26 @@ describe('feature extraction queries', () => {
     assert.equal(finalQuery.includes('ST_Area(ST_Transform(clipped_geometry'), false)
   })
 
+  test('retains only polygonal building_part geometry for geometry=clip-all', async () => {
+    const { getFeaturesForSpatialWithConnection } = await loadQueriesModule()
+    const connection = createConnection([
+      { count: 4, polygon_count: 4, area_km2: 8 },
+      { count: 3, polygon_count: 3, area_km2: 6.5 },
+    ])
+
+    await getFeaturesForSpatialWithConnection(
+      connection as never,
+      createCtx({ spatialGeometry: 'clip-all' }),
+      'building_part',
+      'buildings',
+      '/tmp/final.parquet',
+    )
+
+    const finalQuery = connection.queries.at(-2) ?? ''
+    assert.match(finalQuery, /ST_CollectionExtract\([\s\S]*,\s*3\s*\)/)
+    assert.equal(finalQuery.includes('ST_Area(ST_Transform(clipped_geometry'), false)
+  })
+
   test('clips only smart feature types for geometry=clip-smart', async () => {
     const { getFeaturesForSpatialWithConnection } = await loadQueriesModule()
     const connection = createConnection([
@@ -655,6 +678,29 @@ describe('feature extraction queries', () => {
       connection.queries.some(query => query.includes('ST_Intersection')),
       true,
     )
+  })
+
+  test('retains only polygonal bathymetry and land_cover geometry after clipping', async () => {
+    const { getFeaturesForSpatialWithConnection } = await loadQueriesModule()
+
+    for (const featureType of ['bathymetry', 'land_cover']) {
+      const connection = createConnection([
+        { count: 4, polygon_count: 4, area_km2: 8 },
+        { count: 3, polygon_count: 3, area_km2: 6.5 },
+      ])
+
+      await getFeaturesForSpatialWithConnection(
+        connection as never,
+        createCtx({ spatialGeometry: 'clip-smart' }),
+        featureType,
+        'base',
+        '/tmp/final.parquet',
+      )
+
+      const finalQuery = connection.queries.at(-2) ?? ''
+      assert.match(finalQuery, /ST_CollectionExtract\([\s\S]*,\s*3\s*\)/)
+      assert.equal(finalQuery.includes('ST_Area(ST_Transform(clipped_geometry'), false)
+    }
   })
 
   test('clips segment for geometry=clip-smart', async () => {

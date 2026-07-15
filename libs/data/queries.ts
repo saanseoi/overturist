@@ -66,6 +66,14 @@ const SMART_CLIP_FEATURE_TYPES = new Set([
   'segment',
 ])
 
+const POLYGONAL_CLIPPED_FEATURE_TYPES = new Set([
+  'bathymetry',
+  'building',
+  'building_part',
+  'division_area',
+  'land_cover',
+])
+
 const MIN_CLIPPED_DIVISION_AREA_M2 = 1
 
 /**
@@ -90,20 +98,17 @@ function shouldClipFeatureGeometry(
 }
 
 /**
- * Returns the geometry dimension required by division feature schemas after clipping.
+ * Returns the geometry dimension required by fixed-dimension feature schemas after clipping.
  * @param featureType - Feature type whose clipped geometry is being written
  * @returns DuckDB collection-extraction dimension, or null when no normalization is needed
- * @remarks Area intersections must remain polygonal and boundary intersections must remain linear.
+ * @remarks Polygon-only schemas remain polygonal and division boundaries remain linear.
  */
 function getExpectedClippedGeometryDimension(featureType: string): 2 | 3 | null {
-  switch (featureType) {
-    case 'division_area':
-      return 3
-    case 'division_boundary':
-      return 2
-    default:
-      return null
+  if (POLYGONAL_CLIPPED_FEATURE_TYPES.has(featureType)) {
+    return 3
   }
+
+  return featureType === 'division_boundary' ? 2 : null
 }
 
 /**
