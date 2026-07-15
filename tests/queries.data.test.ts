@@ -616,6 +616,26 @@ describe('feature extraction queries', () => {
     )
   })
 
+  test('retains only linear division_boundary geometry after clipping', async () => {
+    const { getFeaturesForSpatialWithConnection } = await loadQueriesModule()
+    const connection = createConnection([
+      { count: 4, polygon_count: 0, area_km2: 0 },
+      { count: 3, polygon_count: 0, area_km2: 0 },
+    ])
+
+    await getFeaturesForSpatialWithConnection(
+      connection as never,
+      createCtx({ spatialGeometry: 'clip-smart' }),
+      'division_boundary',
+      'divisions',
+      '/tmp/final.parquet',
+    )
+
+    const finalQuery = connection.queries.at(-2) ?? ''
+    assert.match(finalQuery, /ST_CollectionExtract\([\s\S]*,\s*2\s*\)/)
+    assert.equal(finalQuery.includes('ST_Area(ST_Transform(clipped_geometry'), false)
+  })
+
   test('clips only smart feature types for geometry=clip-smart', async () => {
     const { getFeaturesForSpatialWithConnection } = await loadQueriesModule()
     const connection = createConnection([
@@ -680,26 +700,12 @@ describe('feature extraction queries', () => {
     const finalQuery = connection.queries.at(-2) ?? ''
     assert.equal(finalQuery.includes('ST_CollectionExtract'), true)
     assert.match(finalQuery, /ST_CollectionExtract\([\s\S]*,\s*3\s*\)/)
-  })
-
-  test('retains only linear division_boundary geometry after clipping', async () => {
-    const { getFeaturesForSpatialWithConnection } = await loadQueriesModule()
-    const connection = createConnection([
-      { count: 4, polygon_count: 0, area_km2: 0 },
-      { count: 3, polygon_count: 0, area_km2: 0 },
-    ])
-
-    await getFeaturesForSpatialWithConnection(
-      connection as never,
-      createCtx({ spatialGeometry: 'clip-smart' }),
-      'division_boundary',
-      'divisions',
-      '/tmp/final.parquet',
+    assert.equal(
+      finalQuery.includes(
+        "ST_Area(ST_Transform(clipped_geometry, 'EPSG:4326', 'EPSG:6933', true)) > 1",
+      ),
+      true,
     )
-
-    const finalQuery = connection.queries.at(-2) ?? ''
-    assert.equal(finalQuery.includes('ST_CollectionExtract'), true)
-    assert.match(finalQuery, /ST_CollectionExtract\([\s\S]*,\s*2\s*\)/)
   })
 
   test('preserves geometry when clipping is disabled', async () => {
