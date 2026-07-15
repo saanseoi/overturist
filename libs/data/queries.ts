@@ -88,6 +88,23 @@ function shouldClipFeatureGeometry(
 }
 
 /**
+ * Returns the geometry dimension required by division feature schemas after clipping.
+ * @param featureType - Feature type whose clipped geometry is being written
+ * @returns DuckDB collection-extraction dimension, or null when no normalization is needed
+ * @remarks Area intersections must remain polygonal and boundary intersections must remain linear.
+ */
+function getExpectedClippedGeometryDimension(featureType: string): 2 | 3 | null {
+  switch (featureType) {
+    case 'division_area':
+      return 3
+    case 'division_boundary':
+      return 2
+    default:
+      return null
+  }
+}
+
+/**
  * Reports whether the resolved context requires an exact spatial-filter stage after bbox prefiltering.
  * @param ctx - Active control context
  * @returns True when the run should execute the exact geometry predicate
@@ -964,6 +981,13 @@ export async function getFeaturesForSpatialWithConnection(
         ctx.spatialGeometry,
       )
       const exactPredicate = buildFeatureExactWhereClause(ctx, featureType)
+      const expectedGeometryDimension = getExpectedClippedGeometryDimension(featureType)
+      const clippedGeometryExpression = expectedGeometryDimension
+        ? `ST_CollectionExtract(
+                                ST_Intersection(geometry, (SELECT geom FROM frame_geom)),
+                                ${expectedGeometryDimension}
+                            )`
+        : 'ST_Intersection(geometry, (SELECT geom FROM frame_geom))'
 
       // Preserve full features by default, or clip selected feature types to the frame when configured.
       const geomFilterQuery = clipFeatureGeometry
@@ -972,7 +996,7 @@ export async function getFeaturesForSpatialWithConnection(
                     WITH matching_features AS (
                         SELECT
                             *,
-                            ST_Intersection(geometry, (SELECT geom FROM frame_geom)) AS clipped_geometry
+                            ${clippedGeometryExpression} AS clipped_geometry
                         FROM read_parquet('${cacheFile}')
                         WHERE ${exactPredicate}
                     )
