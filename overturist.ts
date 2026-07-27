@@ -42,7 +42,7 @@ async function main() {
   }
 
   if (cliArgs.releases) {
-    await releasesCmd()
+    await releasesCmd(cliArgs.format)
     return
   }
 

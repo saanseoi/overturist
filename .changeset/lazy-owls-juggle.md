@@ -2,4 +2,4 @@
 "@saanseoi/overturist": minor
 ---
 
-Add a `releases` command that prints the S3-available Overture release versions as JSON.
+Add a `releases` command that lists S3-available Overture release versions, with optional JSON output.

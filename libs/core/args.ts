@@ -135,6 +135,11 @@ const options: Record<string, OptionConfig> = {
     alias: 'l',
     group: 'default',
   },
+  format: {
+    description: `Output format for releases ${kleur.grey('(json)')}`,
+    boolean: false,
+    group: 'default',
+  },
 }
 
 const argConfig = {
@@ -149,6 +154,7 @@ const argConfig = {
     'frame',
     'predicate',
     'geometry',
+    'format',
   ], // Add support for multiple values
   alias: Object.fromEntries(
     Object.entries(options)
@@ -188,9 +194,11 @@ export function handleArguments(argv: string[] = process.argv): CliArgs {
   const frameArg = parseStringArgument(parsedArgs.frame)
   const predicateArg = parseStringArgument(parsedArgs.predicate)
   const geometryArg = parseStringArgument(parsedArgs.geometry)
+  const formatArg = parseStringArgument(parsedArgs.format)
   const frame = frameArg ? validateSpatialFrame(frameArg) : undefined
   const predicate = predicateArg ? validateSpatialPredicate(predicateArg) : undefined
   const geometry = geometryArg ? validateSpatialGeometry(geometryArg) : undefined
+  const format = formatArg ? validateReleaseOutputFormat(formatArg) : undefined
 
   // Infer the target from explicit location flags.
   const divisionRequested = hasOption(argv, 'division', 'd')
@@ -214,6 +222,7 @@ export function handleArguments(argv: string[] = process.argv): CliArgs {
     geometry,
     world,
     locale,
+    format,
     get: isGetCommand(argv),
     info: isInfoCommand(argv),
     releases: isReleasesCommand(argv),
@@ -265,7 +274,7 @@ function displayHelp() {
   )
   console.log(
     kleur.magenta('  releases'.padEnd(20)) +
-      kleur.white('Print S3-available release versions as JSON'),
+      kleur.white('List S3-available release versions'),
   )
   console.log()
   console.log(kleur.white('OPTIONS:'))
@@ -557,6 +566,20 @@ function isInfoCommand(argv: string[]): boolean {
  */
 function isReleasesCommand(argv: string[]): boolean {
   return argv[2] === 'releases'
+}
+
+/**
+ * Validates the machine-readable release output format.
+ * @param format - Requested output format
+ * @returns The validated JSON output format
+ * @throws Error when the requested output format is unsupported
+ */
+function validateReleaseOutputFormat(format: string): 'json' {
+  if (format !== 'json') {
+    throw new Error(`Invalid format: ${format}. Use json.`)
+  }
+
+  return format
 }
 
 /**

@@ -77,6 +77,25 @@ describe('handleArguments', () => {
     assert.equal(cliArgs.releases, true)
   })
 
+  test('accepts JSON as the releases output format', () => {
+    const cliArgs = handleArguments([
+      'bun',
+      'overturist.ts',
+      'releases',
+      '--format',
+      'json',
+    ])
+
+    assert.equal(cliArgs.format, 'json')
+  })
+
+  test('rejects unsupported releases output formats', () => {
+    assert.throws(
+      () => handleArguments(['bun', 'overturist.ts', 'releases', '--format', 'text']),
+      /Invalid format: text. Use json./,
+    )
+  })
+
   test('parses an OSM relation id separately from the canonical division id', () => {
     const cliArgs = handleArguments([
       'bun',
