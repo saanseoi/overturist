@@ -246,6 +246,7 @@ export interface CliArgs {
   locale?: string
   get?: boolean
   info?: boolean
+  releases?: boolean
 }
 
 export type ParsedArgs = {

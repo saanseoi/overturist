@@ -216,6 +216,7 @@ export function handleArguments(argv: string[] = process.argv): CliArgs {
     locale,
     get: isGetCommand(argv),
     info: isInfoCommand(argv),
+    releases: isReleasesCommand(argv),
   }
 }
 
@@ -248,6 +249,8 @@ function displayHelp() {
       kleur.red('get') +
       ' | ' +
       kleur.yellow('info') +
+      ' | ' +
+      kleur.magenta('releases') +
       ' ' +
       kleur.gray('[OPTIONS]') +
       '\n',
@@ -259,6 +262,10 @@ function displayHelp() {
   console.log(
     kleur.yellow('  info'.padEnd(20)) +
       kleur.white('Inspect one division without user input'),
+  )
+  console.log(
+    kleur.magenta('  releases'.padEnd(20)) +
+      kleur.white('Print S3-available release versions as JSON'),
   )
   console.log()
   console.log(kleur.white('OPTIONS:'))
@@ -544,6 +551,15 @@ function isInfoCommand(argv: string[]): boolean {
 }
 
 /**
+ * Detects whether the CLI was invoked with the positional `releases` command.
+ * @param argv - Raw process arguments, including runtime and script paths
+ * @returns True when the first positional argument is `releases`
+ */
+function isReleasesCommand(argv: string[]): boolean {
+  return argv[2] === 'releases'
+}
+
+/**
  * Applies CLI example color conventions to a command string.
  * @param command - Example command string to colorize
  * @returns Colorized command string for terminal display
@@ -564,6 +580,13 @@ function colorizeExampleCommand(command: string): string {
 
   if (coloredCommand.includes(' info')) {
     coloredCommand = coloredCommand.replace(' info', ` ${kleur.yellow('info')}`)
+  }
+
+  if (coloredCommand.includes(' releases')) {
+    coloredCommand = coloredCommand.replace(
+      ' releases',
+      ` ${kleur.magenta('releases')}`,
+    )
   }
 
   // Highlight options whether they appear first or later in the command.

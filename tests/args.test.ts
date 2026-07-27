@@ -69,6 +69,14 @@ describe('handleArguments', () => {
     assert.equal(cliArgs.divisionId, 'b4f09a9f-4cba-4a7c-bf58-2e63bc2e913d')
   })
 
+  test('detects releases mode only when releases is the first positional argument', () => {
+    const cliArgs = handleArguments(['bun', 'overturist.ts', 'releases'])
+
+    assert.equal(cliArgs.get, false)
+    assert.equal(cliArgs.info, false)
+    assert.equal(cliArgs.releases, true)
+  })
+
   test('parses an OSM relation id separately from the canonical division id', () => {
     const cliArgs = handleArguments([
       'bun',
