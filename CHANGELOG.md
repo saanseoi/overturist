@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+### Patch Changes
+
+- d9ef8ad: Show the combined size of completed download outputs in the final progress status.
+
 ## 0.2.0
 
 ### Minor Changes
