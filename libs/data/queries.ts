@@ -66,6 +66,16 @@ const SMART_CLIP_FEATURE_TYPES = new Set([
   'segment',
 ])
 
+const POLYGONAL_CLIPPED_FEATURE_TYPES = new Set([
+  'bathymetry',
+  'building',
+  'building_part',
+  'division_area',
+  'land_cover',
+])
+
+const MIN_CLIPPED_DIVISION_AREA_M2 = 1
+
 /**
  * Decides whether a feature type should have its geometry clipped to the frame.
  * @param featureType - Feature type currently being processed
@@ -88,20 +98,35 @@ function shouldClipFeatureGeometry(
 }
 
 /**
- * Returns the geometry dimension required by division feature schemas after clipping.
+ * Returns the geometry dimension required by fixed-dimension feature schemas after clipping.
  * @param featureType - Feature type whose clipped geometry is being written
  * @returns DuckDB collection-extraction dimension, or null when no normalization is needed
- * @remarks Area intersections must remain polygonal and boundary intersections must remain linear.
+ * @remarks Polygon-only schemas remain polygonal and division boundaries remain linear.
  */
 function getExpectedClippedGeometryDimension(featureType: string): 2 | 3 | null {
-  switch (featureType) {
-    case 'division_area':
-      return 3
-    case 'division_boundary':
-      return 2
-    default:
-      return null
+  if (POLYGONAL_CLIPPED_FEATURE_TYPES.has(featureType)) {
+    return 3
   }
+
+  return featureType === 'division_boundary' ? 2 : null
+}
+
+/**
+ * Builds the retention predicate for a geometry produced by clipping.
+ * @param featureType - Feature type whose clipped geometry is being evaluated
+ * @returns SQL predicate that rejects empty geometry and division-area precision slivers
+ * @remarks Administrative areas smaller than one square metre are clipping artifacts, not meaningful exports.
+ */
+function buildClippedGeometryRetentionWhereClause(featureType: string): string {
+  const nonEmptyGeometry =
+    'clipped_geometry IS NOT NULL AND NOT ST_IsEmpty(clipped_geometry)'
+
+  if (featureType !== 'division_area') {
+    return nonEmptyGeometry
+  }
+
+  return `${nonEmptyGeometry}
+      AND ST_Area(ST_Transform(clipped_geometry, 'EPSG:4326', 'EPSG:6933', true)) > ${MIN_CLIPPED_DIVISION_AREA_M2}`
 }
 
 /**
@@ -988,6 +1013,8 @@ export async function getFeaturesForSpatialWithConnection(
                                 ${expectedGeometryDimension}
                             )`
         : 'ST_Intersection(geometry, (SELECT geom FROM frame_geom))'
+      const clippedGeometryRetentionWhereClause =
+        buildClippedGeometryRetentionWhereClause(featureType)
 
       // Preserve full features by default, or clip selected feature types to the frame when configured.
       const geomFilterQuery = clipFeatureGeometry
@@ -1010,9 +1037,9 @@ export async function getFeaturesForSpatialWithConnection(
                                 xmax := ST_XMax(clipped_geometry),
                                 ymax := ST_YMax(clipped_geometry)
                             ) AS bbox
-                        )
+                    )
                     FROM matching_features
-                    WHERE clipped_geometry IS NOT NULL AND NOT ST_IsEmpty(clipped_geometry)
+                    WHERE ${clippedGeometryRetentionWhereClause}
                 ) TO '${outputFile}' (FORMAT PARQUET, COMPRESSION 'ZSTD');
             `
         : `

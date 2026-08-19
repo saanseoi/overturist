@@ -401,6 +401,51 @@ describe('snapshot progress rendering', () => {
     assert.doesNotMatch(snapshot, /Obtaining every building in the bbox/)
   })
 
+  test('flushes the final completion status before the table is finalized', async () => {
+    const calls = await withStdoutIsTTY(false, async () => {
+      const {
+        completeProgressDisplay,
+        displayTableHeader,
+        finalizeProgressDisplay,
+        updateProgressDisplay,
+      } = await loadProgressModule()
+      const originalLog = console.log
+      const nextCalls: unknown[][] = []
+      console.log = ((...args: unknown[]) => {
+        nextCalls.push(args)
+      }) as typeof console.log
+
+      try {
+        displayTableHeader(createContext())
+        updateProgressDisplay(
+          'building',
+          0,
+          1,
+          createProgressState({
+            isProcessing: false,
+            currentMessage: 'Completed buildings',
+          }),
+          16,
+          5,
+          7,
+        )
+        await Promise.resolve()
+        completeProgressDisplay('Download completed (10 B across 2 files)')
+        finalizeProgressDisplay()
+      } finally {
+        console.log = originalLog
+      }
+
+      return nextCalls
+    })
+
+    assert.equal(calls.length, 2)
+    assert.match(
+      stripAnsi((calls[1]?.[0] as string) || ''),
+      /Download completed \(10 B across 2 files\)/,
+    )
+  })
+
   test('resets queued snapshot state when a new table starts', async () => {
     const calls = await withStdoutIsTTY(false, async () => {
       const { displayTableHeader, updateProgressDisplay } = await loadProgressModule()
@@ -482,8 +527,10 @@ describe('live progress rendering', () => {
     }) as typeof process.stdout.write
 
     try {
-      const { displayTableHeader, finalizeProgressDisplay } = await loadProgressModule()
+      const { completeProgressDisplay, displayTableHeader, finalizeProgressDisplay } =
+        await loadProgressModule()
       displayTableHeader(createContext())
+      completeProgressDisplay('Download completed (10 B across 2 files)')
       finalizeProgressDisplay()
     } finally {
       process.stdout.write = originalWrite
@@ -496,6 +543,12 @@ describe('live progress rendering', () => {
     assert.equal(writes.length > 0, true)
     assert.match(stripAnsi(writes[0] || ''), /FEATURE/)
     assert.match(stripAnsi(writes[0] || ''), /\[1\/1\]/)
+    assert.equal(
+      writes.some(write =>
+        stripAnsi(write).includes('Download completed (10 B across 2 files)'),
+      ),
+      true,
+    )
   })
 })
 

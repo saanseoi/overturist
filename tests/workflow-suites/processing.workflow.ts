@@ -72,6 +72,7 @@ const normalizeOsmRelationRecordIdMock = mock((_value: string) => null as string
 const downloadParquetFilesMock = mock(async () => {})
 
 const applyProgressUpdateMock = mock(() => {})
+const completeProgressDisplayMock = mock(() => {})
 const finalizeProgressDisplayMock = mock(() => {})
 const handleSkippedFeatureMock = mock(async () => {})
 const refreshProgressDisplayMock = mock(() => {})
@@ -193,6 +194,7 @@ async function loadProcessingModule() {
   }))
   mock.module(abs('../../libs/ui'), () => ({
     applyProgressUpdate: applyProgressUpdateMock,
+    completeProgressDisplay: completeProgressDisplayMock,
     finalizeProgressDisplay: finalizeProgressDisplayMock,
     handleSkippedFeature: handleSkippedFeatureMock,
     refreshProgressDisplay: refreshProgressDisplayMock,
@@ -301,6 +303,7 @@ beforeEach(async () => {
   normalizeOsmRelationRecordIdMock.mockClear()
   downloadParquetFilesMock.mockClear()
   applyProgressUpdateMock.mockClear()
+  completeProgressDisplayMock.mockClear()
   finalizeProgressDisplayMock.mockClear()
   handleSkippedFeatureMock.mockClear()
   refreshProgressDisplayMock.mockClear()
@@ -442,6 +445,44 @@ describe('processFeatureTypes', () => {
     )
     assert.equal(getFeaturesForSpatialWithConnectionMock.mock.calls.length, 1)
     assert.equal(getFeatureStatsMock.mock.calls.length, 1)
+  })
+
+  test('reports the combined size of written feature outputs at completion', async () => {
+    const { processFeatureTypes } = await loadProcessingModule()
+    getFeaturesForSpatialWithConnectionMock.mockImplementation(
+      async (
+        _connection: unknown,
+        _ctx: ControlContext,
+        featureType: string,
+        _theme: string,
+        outputPath: string,
+      ) => {
+        await fs.writeFile(outputPath, featureType === 'building' ? '1234' : '123456')
+        return {
+          success: true,
+          finalCount: 1,
+          finalHasArea: false,
+          finalAreaKm2: null,
+          finalStatsDeferred: false,
+        }
+      },
+    )
+
+    await processFeatureTypes(
+      createContext({
+        target: 'division',
+        divisionId: 'division-1',
+        division: createDivision('division-1'),
+        bbox: { xmin: 1, ymin: 2, xmax: 3, ymax: 4 },
+        geometry: 'abcd1234',
+        featureTypes: ['building', 'segment'],
+      }),
+    )
+
+    assert.match(
+      String(completeProgressDisplayMock.mock.calls[0]?.[0]),
+      /Download completed \(10 B across 2 files\)/,
+    )
   })
 
   test('skips existing output files when onFileExists is skip', async () => {
