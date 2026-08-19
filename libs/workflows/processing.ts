@@ -37,6 +37,7 @@ import type {
 } from '../core/types'
 import {
   applyProgressUpdate,
+  completeProgressDisplay,
   finalizeProgressDisplay,
   handleSkippedFeature,
   updateProgressDisplay,
@@ -96,11 +97,81 @@ export async function processFeatureTypes(ctx: ControlContext) {
     }
 
     await Promise.all(pendingStatsTasks)
-    updateProgressStatus(kleur.green('All done'), true)
+    const { bytes, fileCount } = await getCombinedOutputSize(ctx)
+    completeProgressDisplay(
+      kleur.green(
+        `Download completed (${formatDataSize(bytes)} across ${fileCount} ${fileCount === 1 ? 'file' : 'files'})`,
+      ),
+    )
   } finally {
     finalizeProgressDisplay()
     await dbManager.close()
   }
+}
+
+/**
+ * Totals the written Parquet outputs for the selected feature types.
+ * @param ctx - Control context that defines the output paths to inspect
+ * @returns Combined byte size and number of outputs currently present
+ */
+async function getCombinedOutputSize(
+  ctx: ControlContext,
+): Promise<{ bytes: number; fileCount: number }> {
+  // Inspect only this run's deterministic output paths, excluding unrelated files in the directory.
+  const outputStats = await Promise.all(
+    ctx.featureTypes.map(async featureType => {
+      const outputPath = path.join(
+        ctx.outputDir,
+        getFeatureOutputFilename(
+          featureType,
+          ctx.target,
+          ctx.spatialFrame,
+          ctx.spatialPredicate,
+          ctx.spatialGeometry,
+        ),
+      )
+
+      try {
+        return await fs.stat(outputPath)
+      } catch (_error) {
+        return null
+      }
+    }),
+  )
+
+  return outputStats.reduce(
+    (total, outputStat) => {
+      if (!outputStat?.isFile()) {
+        return total
+      }
+
+      return {
+        bytes: total.bytes + outputStat.size,
+        fileCount: total.fileCount + 1,
+      }
+    },
+    { bytes: 0, fileCount: 0 },
+  )
+}
+
+/**
+ * Formats a byte count for the final download summary.
+ * @param bytes - Byte count to display
+ * @returns Human-readable binary size
+ */
+function formatDataSize(bytes: number): string {
+  if (bytes === 0) {
+    return '0 B'
+  }
+
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const unitIndex = Math.min(
+    Math.floor(Math.log(bytes) / Math.log(1024)),
+    units.length - 1,
+  )
+  const value = bytes / 1024 ** unitIndex
+
+  return `${Number(value.toFixed(1))} ${units[unitIndex]}`
 }
 
 /**

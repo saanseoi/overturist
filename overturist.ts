@@ -5,6 +5,7 @@ import { getConfig } from './libs/core/config'
 import { getCmd } from './libs/workflows/get'
 import { infoCmd } from './libs/workflows/info'
 import { handleMainMenu } from './libs/workflows/interactive'
+import { releasesCmd } from './libs/workflows/releases'
 
 /**
  * CLI entry point for Overturist.
@@ -37,6 +38,11 @@ async function main() {
 
   if (cliArgs.info) {
     await infoCmd(CONFIG, cliArgs, false)
+    return
+  }
+
+  if (cliArgs.releases) {
+    await releasesCmd(cliArgs.format)
     return
   }
 

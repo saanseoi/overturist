@@ -228,7 +228,9 @@ describe('promptForDivisionSelection', () => {
       totalCount: results.length,
     })
 
-    assert.equal((promptCalls[0]?.options[0]?.value as Division).subtype, 'dependency')
+    const firstOption = promptCalls[0]?.options[0]
+    assert.ok(firstOption)
+    assert.equal((firstOption.value as Division).subtype, 'dependency')
     assert.equal(selected.subtype, 'dependency')
   })
 

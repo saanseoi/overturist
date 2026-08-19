@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.1
+
+### Patch Changes
+
+- d9ef8ad: Show the combined size of completed download outputs in the final progress status.
+
+## 0.2.0
+
+### Minor Changes
+
+- fc6e304: Add a `releases` command that lists S3-available Overture release versions, with optional JSON output.
+
+### Patch Changes
+
+- c1211e8: Normalize clipped geometry for area types, and filter clipped division_area slivers
+- 7890377: Update runtime and development dependencies.
+
 ## 0.1.4 - 2026-06-18
 
 ### Patch Changes

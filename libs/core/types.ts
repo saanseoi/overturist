@@ -244,8 +244,10 @@ export interface CliArgs {
   geometry?: SpatialGeometryMode
   world?: boolean
   locale?: string
+  format?: 'json'
   get?: boolean
   info?: boolean
+  releases?: boolean
 }
 
 export type ParsedArgs = {
@@ -272,6 +274,7 @@ export type ParsedArgs = {
   frame?: SpatialFrame
   predicate?: SpatialPredicate
   geometry?: SpatialGeometryMode
+  format?: string
 }
 
 /**

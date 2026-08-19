@@ -231,6 +231,26 @@ export function updateProgressStatus(message: string, forceRender = false): void
 }
 
 /**
+ * Renders the final extraction status immediately before normal terminal output resumes.
+ * @param message - User-facing completion message
+ * @returns Nothing. Flushes the current progress table synchronously.
+ */
+export function completeProgressDisplay(message: string): void {
+  if (!progressTableState.isActive) {
+    return
+  }
+
+  progressTableState.statusMessage = message
+
+  if (progressTableState.renderMode === 'live') {
+    renderLiveProgressTable()
+    return
+  }
+
+  renderSnapshotProgressTable(true)
+}
+
+/**
  * Stops the live progress renderer.
  * @returns Nothing. Restores normal terminal output.
  */
@@ -767,29 +787,37 @@ function scheduleProgressRender(forceRender = false): void {
     if (!progressTableState.isActive) {
       return
     }
-
-    const table = buildProgressTable(
-      progressTableState.rowStates,
-      progressTableState.featureNameWidth,
-      progressTableState.indexWidth,
-      progressTableState.countWidth,
-    )
-    const forceSnapshot = progressTableState.pendingForceRender
-    progressTableState.pendingForceRender = false
-
-    if (table === progressTableState.lastRenderedTable && !forceSnapshot) {
-      return
-    }
-
-    const snapshot = `${table}\n${buildStatusLine(progressTableState.statusMessage)}`
-    if (snapshot === progressTableState.lastRenderedSnapshot) {
-      return
-    }
-
-    progressTableState.lastRenderedTable = table
-    progressTableState.lastRenderedSnapshot = snapshot
-    console.log(snapshot)
+    renderSnapshotProgressTable()
   })
+}
+
+/**
+ * Renders the current table once for terminals without in-place redraw support.
+ * @param forceRender - Whether to print even when the table body is unchanged
+ * @returns Nothing. Writes a snapshot only when it differs from the previous one.
+ */
+function renderSnapshotProgressTable(forceRender = false): void {
+  const table = buildProgressTable(
+    progressTableState.rowStates,
+    progressTableState.featureNameWidth,
+    progressTableState.indexWidth,
+    progressTableState.countWidth,
+  )
+  const forceSnapshot = progressTableState.pendingForceRender || forceRender
+  progressTableState.pendingForceRender = false
+
+  if (table === progressTableState.lastRenderedTable && !forceSnapshot) {
+    return
+  }
+
+  const snapshot = `${table}\n${buildStatusLine(progressTableState.statusMessage)}`
+  if (snapshot === progressTableState.lastRenderedSnapshot) {
+    return
+  }
+
+  progressTableState.lastRenderedTable = table
+  progressTableState.lastRenderedSnapshot = snapshot
+  console.log(snapshot)
 }
 
 /**
