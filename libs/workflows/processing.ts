@@ -56,6 +56,7 @@ function hasExactSpatialPass(ctx: ControlContext): boolean {
 
 type FeatureProcessingResult = {
   success: boolean
+  error?: string
   pendingStats?: Promise<void>
 }
 
@@ -99,7 +100,9 @@ export async function processFeatureTypes(ctx: ControlContext): Promise<void> {
     for (const [index, featureType] of ctx.featureTypes.entries()) {
       const result = await processFeatureType(ctx, featureType, index, connection)
       if (!result.success) {
-        failedFeatureTypes.push(featureType)
+        failedFeatureTypes.push(
+          result.error ? `${featureType}: ${result.error}` : featureType,
+        )
       }
       if (result.pendingStats) {
         pendingStatsTasks.push(result.pendingStats)
@@ -460,7 +463,7 @@ async function runFeatureExtraction(
   )
 
   if (!result.success) {
-    throw new Error(`Failed to process dataset for ${featureType}`)
+    throw new Error(result.error ?? `Failed to process dataset for ${featureType}`)
   }
 
   if (result.finalStatsDeferred) {
@@ -579,7 +582,10 @@ async function processFeatureType(
       countWidth,
     )
     updateProgressStatus(progressState.currentMessage, true)
-    return { success: false }
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    }
   }
 }
 

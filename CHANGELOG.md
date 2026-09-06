@@ -4,6 +4,8 @@
 
 ### Patch Changes
 
+- Handle empty spatial extraction results as successful zero-row Parquet outputs, and retain underlying error details in spatial download failure summaries.
+
 - d0acc5a: Fix download error reporting and statistics handling:
 
   - Report failed feature extractions and exit unsuccessfully after processing the remaining features.

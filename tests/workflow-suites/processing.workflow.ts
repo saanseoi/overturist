@@ -408,6 +408,55 @@ afterEach(async () => {
 })
 
 describe('processFeatureTypes', () => {
+  test('reports the underlying spatial failure in the final summary', async () => {
+    const { processFeatureTypes } = await loadProcessingModule()
+    getFeaturesForSpatialWithConnectionMock.mockImplementationOnce(async () => ({
+      success: false,
+      error: 'S3 request failed',
+    }))
+    await assert.rejects(
+      processFeatureTypes(
+        createContext({
+          target: 'bbox',
+          bbox: { xmin: 1, ymin: 2, xmax: 3, ymax: 4 },
+          spatialFrame: 'bbox',
+          featureTypes: ['building'],
+        }),
+      ),
+      /Download failed for: building: S3 request failed/,
+    )
+    assert.match(
+      String(completeProgressDisplayMock.mock.calls[0]?.[0]),
+      /building: S3 request failed/,
+    )
+  })
+
+  test('completes an empty spatial extraction with zero features', async () => {
+    const { processFeatureTypes } = await loadProcessingModule()
+    getFeaturesForSpatialWithConnectionMock.mockImplementationOnce(async () => ({
+      success: true,
+      finalCount: 0,
+      finalHasArea: false,
+      finalAreaKm2: null,
+    }))
+    await processFeatureTypes(
+      createContext({
+        target: 'bbox',
+        bbox: { xmin: 1, ymin: 2, xmax: 3, ymax: 4 },
+        spatialFrame: 'bbox',
+        featureTypes: ['building'],
+      }),
+    )
+    const state = updateProgressDisplayMock.mock.calls.at(-1)?.[3]
+    assert.equal(state.featureCount, 0)
+    assert.equal(state.hasCountMetric, true)
+    assert.equal(state.geomComplete, true)
+    assert.match(
+      String(completeProgressDisplayMock.mock.calls[0]?.[0]),
+      /Download completed/,
+    )
+  })
+
   test('continues remaining features but rejects the run when extraction fails', async () => {
     const { processFeatureTypes } = await loadProcessingModule()
     getFeaturesForWorldMock.mockImplementationOnce(async () => ({

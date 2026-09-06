@@ -457,6 +457,14 @@ async function getFeatureStatsWithConnection(
   connection: DuckDBConnection,
   filePath: string,
 ): Promise<FeatureStats> {
+  // Empty Parquet files may expose geometry as BLOB, which cannot bind spatial functions.
+  const countReader = await connection.runAndReadAll(
+    `SELECT COUNT(*) AS count FROM read_parquet(${escapeSqlLiteral(filePath)});`,
+  )
+  if (coerceNumericStat(countReader.getRowObjectsJson()[0]?.count as string) === 0) {
+    return { count: 0, hasArea: false, areaKm2: null }
+  }
+
   const reader = await connection.runAndReadAll(
     buildFeatureStatsQuery(escapeSqlLiteral(filePath)),
   )
@@ -493,12 +501,25 @@ export async function getCount(filePath: string): Promise<number> {
  * @returns Promise resolving to count plus polygon area stats
  */
 export async function getFeatureStats(filePath: string): Promise<FeatureStats> {
-  const { stdout } = await runDuckDBQuery(
+  // Check row count before binding geometry functions on potentially empty output.
+  const countResult = await runDuckDBQuery(
+    `SELECT COUNT(*) AS count FROM read_parquet(${escapeSqlLiteral(filePath)});`,
+  )
+  if (countResult.exitCode !== 0) {
+    throw new Error(countResult.stderr || 'Failed to count features')
+  }
+  if (coerceNumericStat(JSON.parse(countResult.stdout)[0]?.count) === 0) {
+    return { count: 0, hasArea: false, areaKm2: null }
+  }
+  const { stdout, stderr, exitCode } = await runDuckDBQuery(
     `
       ${DUCK_DB_LOCAL_SPATIAL_SETUP}
       ${buildFeatureStatsQuery(escapeSqlLiteral(filePath))}
     `,
   )
+  if (exitCode !== 0) {
+    throw new Error(stderr || 'Failed to read feature statistics')
+  }
   const result = JSON.parse(stdout) as Array<{
     count: number
     polygon_count: number
@@ -956,6 +977,7 @@ export async function getFeaturesForSpatialWithConnection(
   finalHasArea: boolean
   finalAreaKm2: number | null
   finalStatsDeferred?: boolean
+  error?: string
 }> {
   const s3Path = escapeSqlLiteral(
     `s3://overturemaps-us-west-2/release/${ctx.releaseVersion}/theme=${theme}/type=${featureType}/*.parquet`,
@@ -1107,9 +1129,10 @@ export async function getFeaturesForSpatialWithConnection(
         finalAreaKm2: null,
       }
     }
-  } catch (_error) {
+  } catch (error) {
     return {
       success: false,
+      error: error instanceof Error ? error.message : String(error),
       bboxCount: 0,
       bboxHasArea: false,
       bboxAreaKm2: null,
