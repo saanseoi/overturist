@@ -4,6 +4,8 @@
 
 ### Patch Changes
 
+- Normalize the CLI executable mapping for npm packaging.
+
 - Handle empty spatial extraction results as successful zero-row Parquet outputs, and retain underlying error details in spatial download failure summaries.
 
 - d0acc5a: Fix download error reporting and statistics handling:
