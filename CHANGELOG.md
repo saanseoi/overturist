@@ -13,6 +13,8 @@
 
   Simplify progress statistics handling and remove redundant filesystem checks.
 
+- 7f7c1ce: Align download progress headers and rows using shared column widths and separators. Right-align numeric columns, center status markers, and use single-width symbols for consistent terminal rendering.
+
 ## 0.2.1
 
 ### Patch Changes
