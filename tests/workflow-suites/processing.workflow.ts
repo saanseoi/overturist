@@ -408,6 +408,139 @@ afterEach(async () => {
 })
 
 describe('processFeatureTypes', () => {
+  test('reports the underlying spatial failure in the final summary', async () => {
+    const { processFeatureTypes } = await loadProcessingModule()
+    getFeaturesForSpatialWithConnectionMock.mockImplementationOnce(async () => ({
+      success: false,
+      error: 'S3 request failed',
+    }))
+    await assert.rejects(
+      processFeatureTypes(
+        createContext({
+          target: 'bbox',
+          bbox: { xmin: 1, ymin: 2, xmax: 3, ymax: 4 },
+          spatialFrame: 'bbox',
+          featureTypes: ['building'],
+        }),
+      ),
+      /Download failed for: building: S3 request failed/,
+    )
+    assert.match(
+      String(completeProgressDisplayMock.mock.calls[0]?.[0]),
+      /building: S3 request failed/,
+    )
+  })
+
+  test('completes an empty spatial extraction with zero features', async () => {
+    const { processFeatureTypes } = await loadProcessingModule()
+    getFeaturesForSpatialWithConnectionMock.mockImplementationOnce(async () => ({
+      success: true,
+      finalCount: 0,
+      finalHasArea: false,
+      finalAreaKm2: null,
+    }))
+    await processFeatureTypes(
+      createContext({
+        target: 'bbox',
+        bbox: { xmin: 1, ymin: 2, xmax: 3, ymax: 4 },
+        spatialFrame: 'bbox',
+        featureTypes: ['building'],
+      }),
+    )
+    const state = updateProgressDisplayMock.mock.calls.at(-1)?.[3]
+    assert.equal(state.featureCount, 0)
+    assert.equal(state.hasCountMetric, true)
+    assert.equal(state.geomComplete, true)
+    assert.match(
+      String(completeProgressDisplayMock.mock.calls[0]?.[0]),
+      /Download completed/,
+    )
+  })
+
+  test('continues remaining features but rejects the run when extraction fails', async () => {
+    const { processFeatureTypes } = await loadProcessingModule()
+    getFeaturesForWorldMock.mockImplementationOnce(async () => ({
+      success: false,
+      count: 0,
+      hasArea: false,
+      areaKm2: null,
+    }))
+
+    await assert.rejects(
+      processFeatureTypes(createContext({ featureTypes: ['building', 'segment'] })),
+      /Download failed for: building/,
+    )
+
+    assert.equal(getFeaturesForWorldMock.mock.calls.length, 2)
+    assert.match(
+      String(completeProgressDisplayMock.mock.calls[0]?.[0]),
+      /Download failed for: building/,
+    )
+    assert.equal(finalizeProgressDisplayMock.mock.calls.length, 1)
+    assert.equal(dbCloseMock.mock.calls.length, 1)
+  })
+
+  test('downloads the next feature while previous statistics are pending', async () => {
+    const { processFeatureTypes } = await loadProcessingModule()
+    const stats = Promise.withResolvers<{
+      count: number
+      hasArea: boolean
+      areaKm2: number | null
+    }>()
+    getFeatureStatsMock.mockImplementationOnce(() => stats.promise)
+    getFeaturesForSpatialWithConnectionMock.mockImplementation(
+      async (_connection: unknown, _ctx: ControlContext, featureType: string) => {
+        if (featureType === 'segment') {
+          stats.resolve({ count: 4, hasArea: true, areaKm2: null })
+        }
+        return { success: true, finalStatsDeferred: true }
+      },
+    )
+
+    await processFeatureTypes(
+      createContext({
+        target: 'bbox',
+        bbox: { xmin: 1, ymin: 2, xmax: 3, ymax: 4 },
+        spatialFrame: 'bbox',
+        featureTypes: ['building', 'segment'],
+      }),
+    )
+
+    assert.equal(getFeaturesForSpatialWithConnectionMock.mock.calls.length, 2)
+    const buildingState = updateProgressDisplayMock.mock.calls.find(
+      call => call[0] === 'building',
+    )?.[3]
+    assert.equal(buildingState.featureCount, 4)
+    assert.equal(buildingState.featureAreaKm2, null)
+    assert.equal(buildingState.diffAreaKm2, null)
+    assert.equal(completeProgressDisplayMock.mock.calls.length, 1)
+  })
+
+  test('treats unavailable deferred statistics as a warning after a successful write', async () => {
+    const { processFeatureTypes } = await loadProcessingModule()
+    getFeatureStatsMock.mockImplementationOnce(async () => {
+      throw new Error('stats unavailable')
+    })
+
+    await processFeatureTypes(
+      createContext({
+        target: 'bbox',
+        bbox: { xmin: 1, ymin: 2, xmax: 3, ymax: 4 },
+        spatialFrame: 'bbox',
+      }),
+    )
+
+    assert.ok(
+      updateProgressStatusMock.mock.calls.some(call =>
+        String(call[0]).includes('stats unavailable'),
+      ),
+    )
+    assert.match(
+      String(completeProgressDisplayMock.mock.calls[0]?.[0]),
+      /Download completed/,
+    )
+  })
+
   test('initializes DuckDB once and processes world downloads through the world extractor', async () => {
     const { processFeatureTypes } = await loadProcessingModule()
     await processFeatureTypes(

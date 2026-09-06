@@ -153,7 +153,8 @@ function createConnection(
     },
     async runAndReadAll(query: string) {
       queries.push(query)
-      const nextValue = counts.shift()
+      const isCountQuery = query.startsWith('SELECT COUNT(*) AS count')
+      const nextValue = isCountQuery ? counts[0] : counts.shift()
       const count = typeof nextValue === 'number' ? nextValue : (nextValue?.count ?? 0)
       const polygonCount =
         typeof nextValue === 'number' ? 0 : (nextValue?.polygon_count ?? 0)
@@ -301,9 +302,9 @@ describe('count helpers', () => {
       hasArea: true,
       areaKm2: 18.25,
     })
-    assert.match(String(runDuckDBQueryMock.mock.calls[0]?.[0] ?? ''), /LOAD spatial;/)
+    assert.match(String(runDuckDBQueryMock.mock.calls[1]?.[0] ?? ''), /LOAD spatial;/)
     assert.match(
-      String(runDuckDBQueryMock.mock.calls[0]?.[0] ?? ''),
+      String(runDuckDBQueryMock.mock.calls[1]?.[0] ?? ''),
       /ST_Transform\(geometry, 'EPSG:4326', 'EPSG:6933', true\)/,
     )
     assert.doesNotMatch(
@@ -332,6 +333,39 @@ describe('count helpers', () => {
       hasArea: true,
       areaKm2: 18.25,
     })
+  })
+
+  test('does not bind geometry functions for empty Parquet files', async () => {
+    const { getFeatureStats } = await loadQueriesModule()
+    runDuckDBQueryMock.mockImplementation(async () => ({
+      stdout: '[{"count":"0"}]',
+      stderr: '',
+      exitCode: 0,
+    }))
+    assert.deepEqual(await getFeatureStats('/tmp/empty.parquet'), {
+      count: 0,
+      hasArea: false,
+      areaKm2: null,
+    })
+    assert.equal(runDuckDBQueryMock.mock.calls.length, 1)
+    assert.doesNotMatch(String(runDuckDBQueryMock.mock.calls[0]?.[0]), /ST_/)
+  })
+
+  test('preserves the underlying spatial extraction error', async () => {
+    const { getFeaturesForSpatialWithConnection } = await loadQueriesModule()
+    const result = await getFeaturesForSpatialWithConnection(
+      {
+        run: async () => {
+          throw new Error('S3 request failed')
+        },
+      } as never,
+      createCtx(),
+      'building',
+      'buildings',
+      '/tmp/final.parquet',
+    )
+    assert.equal(result.success, false)
+    assert.equal(result.error, 'S3 request failed')
   })
 
   test('returns null when previous release context or files are unavailable', async () => {
@@ -409,6 +443,21 @@ describe('count helpers', () => {
 })
 
 describe('division search queries', () => {
+  test('quotes paths containing apostrophes when counting and reading statistics', async () => {
+    const { getCount, getFeatureStats } = await loadQueriesModule()
+    runDuckDBQueryMock.mockImplementation(async () => ({
+      stdout: '[{"count":1,"polygon_count":0,"area_km2":0}]',
+      stderr: '',
+      exitCode: 0,
+    }))
+    await getCount("/tmp/O'Brien/building.parquet")
+    await getFeatureStats("/tmp/O'Brien/building.parquet")
+
+    for (const [query] of runDuckDBQueryMock.mock.calls) {
+      assert.ok(String(query).includes("'/tmp/O''Brien/building.parquet'"))
+    }
+  })
+
   test('uses the country-code exact match path and caches results', async () => {
     const { getDivisionsByName } = await loadQueriesModule()
     runDuckDBQueryMock.mockImplementation(async () => ({
@@ -509,6 +558,43 @@ describe('division search queries', () => {
 })
 
 describe('feature extraction queries', () => {
+  test('quotes output paths in world extraction', async () => {
+    const { getFeaturesForWorld } = await loadQueriesModule()
+    await getFeaturesForWorld(
+      'building',
+      'buildings',
+      '2026-03-18.0',
+      "/tmp/O'Brien/world.parquet",
+    )
+    const query = String(runDuckDBQueryMock.mock.calls[0]?.[0])
+    assert.ok(query.includes("TO '/tmp/O''Brien/world.parquet'"))
+    assert.ok(query.includes("read_parquet('/tmp/O''Brien/world.parquet')"))
+  })
+
+  test('quotes cache and output paths for empty, preserved, and clipped spatial outputs', async () => {
+    const { getFeaturesForSpatialWithConnection } = await loadQueriesModule()
+    getTempCachePathMock.mockImplementation(async () => "/tmp/O'Brien/cache.parquet")
+
+    for (const count of [0, 2]) {
+      for (const spatialGeometry of ['preserve', 'clip-all'] as const) {
+        const connection = createConnection([count, count])
+        const result = await getFeaturesForSpatialWithConnection(
+          connection as never,
+          createCtx({ spatialGeometry }),
+          'building',
+          'buildings',
+          "/tmp/O'Brien/output.parquet",
+        )
+        assert.equal(result.success, true)
+        const sql = connection.queries.join('\n')
+        assert.ok(sql.includes("TO '/tmp/O''Brien/cache.parquet'"))
+        assert.ok(sql.includes("read_parquet('/tmp/O''Brien/cache.parquet')"))
+        assert.ok(sql.includes("TO '/tmp/O''Brien/output.parquet'"))
+        assert.ok(!sql.includes("/tmp/O'Brien/"))
+      }
+    }
+  })
+
   test('requires bbox for spatial filtering', async () => {
     const { getFeaturesForSpatialWithConnection } = await loadQueriesModule()
     const connection = createConnection([0])
@@ -614,7 +700,7 @@ describe('feature extraction queries', () => {
       connection.queries.some(query => query.includes('ST_Intersection')),
       true,
     )
-    const finalQuery = connection.queries.at(-2) ?? ''
+    const finalQuery = connection.queries.at(-3) ?? ''
     assert.match(finalQuery, /ST_CollectionExtract\([\s\S]*,\s*3\s*\)/)
     assert.equal(finalQuery.includes('ST_Area(ST_Transform(clipped_geometry'), false)
   })
@@ -634,7 +720,7 @@ describe('feature extraction queries', () => {
       '/tmp/final.parquet',
     )
 
-    const finalQuery = connection.queries.at(-2) ?? ''
+    const finalQuery = connection.queries.at(-3) ?? ''
     assert.match(finalQuery, /ST_CollectionExtract\([\s\S]*,\s*2\s*\)/)
     assert.equal(finalQuery.includes('ST_Area(ST_Transform(clipped_geometry'), false)
   })
@@ -654,7 +740,7 @@ describe('feature extraction queries', () => {
       '/tmp/final.parquet',
     )
 
-    const finalQuery = connection.queries.at(-2) ?? ''
+    const finalQuery = connection.queries.at(-3) ?? ''
     assert.match(finalQuery, /ST_CollectionExtract\([\s\S]*,\s*3\s*\)/)
     assert.equal(finalQuery.includes('ST_Area(ST_Transform(clipped_geometry'), false)
   })
@@ -697,7 +783,7 @@ describe('feature extraction queries', () => {
         '/tmp/final.parquet',
       )
 
-      const finalQuery = connection.queries.at(-2) ?? ''
+      const finalQuery = connection.queries.at(-3) ?? ''
       assert.match(finalQuery, /ST_CollectionExtract\([\s\S]*,\s*3\s*\)/)
       assert.equal(finalQuery.includes('ST_Area(ST_Transform(clipped_geometry'), false)
     }
@@ -743,7 +829,7 @@ describe('feature extraction queries', () => {
       connection.queries.some(query => query.includes('ST_Intersection')),
       true,
     )
-    const finalQuery = connection.queries.at(-2) ?? ''
+    const finalQuery = connection.queries.at(-3) ?? ''
     assert.equal(finalQuery.includes('ST_CollectionExtract'), true)
     assert.match(finalQuery, /ST_CollectionExtract\([\s\S]*,\s*3\s*\)/)
     assert.equal(
@@ -769,7 +855,7 @@ describe('feature extraction queries', () => {
       '/tmp/final.parquet',
     )
 
-    const finalQuery = connection.queries.at(-2) ?? ''
+    const finalQuery = connection.queries.at(-3) ?? ''
     assert.equal(finalQuery.includes('ST_Intersection(geometry'), false)
     assert.equal(finalQuery.includes('ST_Intersects'), true)
   })
@@ -800,7 +886,7 @@ describe('feature extraction queries', () => {
       '/tmp/final.parquet',
     )
 
-    const finalQuery = connection.queries.at(-2) ?? ''
+    const finalQuery = connection.queries.at(-3) ?? ''
     assert.equal(finalQuery.includes("division_id NOT IN ('gers:parent')"), true)
     assert.equal(finalQuery.includes("division_id = 'gers:selected'"), false)
     assert.equal(finalQuery.includes('ST_Intersects'), true)

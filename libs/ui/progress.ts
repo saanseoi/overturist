@@ -7,13 +7,13 @@ import type { ControlContext, ProgressState, ProgressUpdate } from '../core/type
 import { getDiffCount } from '../core/utils'
 import { formatBboxPath, formatPath } from './format'
 
-const ACTIVE_CELL_FRAMES = ['🟨', '🟩', '🟦', '🟪']
+const ACTIVE_CELL_FRAMES = ['◐', '◓', '◑', '◒']
 const STATUS_SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧']
-const PLANNED_CELL = '⬜'
-const COMPLETE_CELL = '☑️'
-const NOT_APPLICABLE_CELL = '⬚'
-const SKIPPED_CELL = '⏭️'
-const CELL_COLUMN_WIDTH = 6
+const PLANNED_CELL = '·'
+const COMPLETE_CELL = '✓'
+const NOT_APPLICABLE_CELL = '—'
+const SKIPPED_CELL = '»'
+const CELL_COLUMN_WIDTH = 4
 const DIFF_COLUMN_WIDTH = 9
 const AREA_COLUMN_WIDTH = 11
 const AREA_DIFF_COLUMN_WIDTH = 10
@@ -494,11 +494,12 @@ export function calculateColumnWidths(featureTypes: string[]): {
   indexWidth: number
 } {
   const maxFeatureLength = Math.max(
-    ...featureTypes.map(featureType => featureType.length),
+    0,
+    ...featureTypes.map(featureType => stringWidth(featureType)),
   )
   return {
     featureNameWidth: Math.max(maxFeatureLength, 15) + 1,
-    indexWidth: featureTypes.length >= 10 ? 6 : 5,
+    indexWidth: String(Math.max(featureTypes.length, 1)).length * 2 + 3,
   }
 }
 
@@ -513,10 +514,67 @@ function buildProgressHeader(
   indexWidth: number,
   countWidth: number,
 ): [string, string] {
-  const countColumnWidth = Math.max(countWidth, stringWidth('COUNT'))
-  const headerLine = `${kleur.white(''.padEnd(indexWidth + 1))} ${kleur.cyan('FEATURE'.padEnd(featureNameWidth + 1))} ${kleur.white('BBOX'.padEnd(CELL_COLUMN_WIDTH))} ${kleur.white('GEOM'.padEnd(CELL_COLUMN_WIDTH))} ${kleur.white('COUNT'.padEnd(countColumnWidth))} ${kleur.white('C.DIFF'.padEnd(DIFF_COLUMN_WIDTH))} ${kleur.white('AREA(KM²)'.padEnd(AREA_COLUMN_WIDTH))} ${kleur.white('A.DIFF'.padEnd(AREA_DIFF_COLUMN_WIDTH))}`
-  const separatorLine = ` ${kleur.gray('─'.repeat(indexWidth + 2))}${kleur.gray('─'.repeat(featureNameWidth))} ${kleur.gray('─'.repeat(CELL_COLUMN_WIDTH))} ${kleur.gray('─'.repeat(CELL_COLUMN_WIDTH))} ${kleur.gray('─'.repeat(countColumnWidth))} ${kleur.gray('─'.repeat(DIFF_COLUMN_WIDTH))} ${kleur.gray('─'.repeat(AREA_COLUMN_WIDTH))} ${kleur.gray('─'.repeat(AREA_DIFF_COLUMN_WIDTH))}`
+  const widths = getProgressColumnWidths(featureNameWidth, indexWidth, countWidth)
+  const headerLine = formatProgressCells(
+    [
+      '#',
+      kleur.cyan('FEATURE'),
+      'BBOX',
+      'GEOM',
+      'COUNT',
+      'C.DIFF',
+      'AREA(KM²)',
+      'A.DIFF',
+    ],
+    widths,
+  )
+  const separatorLine = kleur.gray(widths.map(width => '─'.repeat(width)).join('─┼─'))
   return [headerLine, separatorLine]
+}
+
+/**
+ * Defines the shared column widths for headers, separators, and every row state.
+ * @param featureNameWidth - Display width of the feature column
+ * @param indexWidth - Display width of the queue index
+ * @param countWidth - Minimum width of the feature count
+ * @returns Ordered widths for the eight table columns
+ */
+function getProgressColumnWidths(
+  featureNameWidth: number,
+  indexWidth: number,
+  countWidth: number,
+): number[] {
+  return [
+    indexWidth,
+    featureNameWidth,
+    CELL_COLUMN_WIDTH,
+    CELL_COLUMN_WIDTH,
+    Math.max(countWidth, stringWidth('COUNT')),
+    DIFF_COLUMN_WIDTH,
+    AREA_COLUMN_WIDTH,
+    AREA_DIFF_COLUMN_WIDTH,
+  ]
+}
+
+/**
+ * Aligns text, status markers, and numeric cells using one layout rule.
+ * @param cells - Styled cell values in table order
+ * @param widths - Display widths in matching column order
+ * @returns A row with aligned vertical separators
+ */
+function formatProgressCells(cells: string[], widths: number[]): string {
+  return cells
+    .map((cell, index) => {
+      const value = cell.trim()
+      const width = widths[index]
+      if (index === 1) return padDisplayEnd(value, width)
+      if (index === 2 || index === 3) {
+        const leftPadding = Math.max(0, Math.floor((width - stringWidth(value)) / 2))
+        return padDisplayEnd(`${' '.repeat(leftPadding)}${value}`, width)
+      }
+      return padDisplayStart(value, width)
+    })
+    .join(kleur.gray(' │ '))
 }
 
 /**
@@ -603,17 +661,18 @@ function buildProgressLine(params: {
     areaText,
     areaDiffText,
   } = params
-  const indexNum = index + 1
-  const progressPrefix =
-    total > 9 && indexNum < 10
-      ? `[${indexNum}/${total}]`.padStart(indexWidth + 1)
-      : `[${indexNum}/${total}]`.padStart(indexWidth)
-
-  return (
-    `${kleur.white(progressPrefix)} ${kleur.cyan(featureType.padEnd(featureNameWidth))} │ ` +
-    `${padDisplayEnd(bboxCell, CELL_COLUMN_WIDTH)} ${padDisplayEnd(geomCell, CELL_COLUMN_WIDTH)} ` +
-    `${padDisplayStart(countText, countWidth)} ${padDisplayStart(diffText, DIFF_COLUMN_WIDTH)} ` +
-    `${padDisplayStart(areaText, AREA_COLUMN_WIDTH)} ${padDisplayStart(areaDiffText, AREA_DIFF_COLUMN_WIDTH)}`
+  return formatProgressCells(
+    [
+      kleur.white(`[${index + 1}/${total}]`),
+      kleur.cyan(featureType),
+      bboxCell,
+      geomCell,
+      countText,
+      diffText,
+      areaText,
+      areaDiffText,
+    ],
+    getProgressColumnWidths(featureNameWidth, indexWidth, countWidth),
   )
 }
 

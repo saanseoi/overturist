@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import stringWidth from 'string-width'
 import { afterEach, beforeEach, describe, mock, test } from 'bun:test'
 import type { ControlContext, FeatureStats, ProgressState } from '../libs/core'
 
@@ -237,11 +238,17 @@ describe('progress helpers', () => {
       featureNameWidth: 16,
       indexWidth: 5,
     })
+    assert.deepEqual(calculateColumnWidths([]), {
+      featureNameWidth: 16,
+      indexWidth: 5,
+    })
+    assert.equal(calculateColumnWidths(['建築物'.repeat(4)]).featureNameWidth, 25)
+    assert.equal(calculateColumnWidths(Array(100).fill('place')).indexWidth, 9)
     assert.equal(
       calculateColumnWidths(
         Array.from({ length: 10 }, (_, index) => `feature-${index}`),
       ).indexWidth,
-      6,
+      7,
     )
   })
 })
@@ -284,6 +291,93 @@ describe('displayExtractionPlan', () => {
 })
 
 describe('snapshot progress rendering', () => {
+  test('aligns headers, separators, and mixed row states across two-digit indices', async () => {
+    await withStdoutIsTTY(false, async () => {
+      const {
+        calculateColumnWidths,
+        displayTableHeader,
+        updateProgressDisplay,
+        handleSkippedFeature,
+        completeProgressDisplay,
+        finalizeProgressDisplay,
+      } = await loadProgressModule()
+      const featureTypes = [
+        'address',
+        'bathymetry',
+        'infrastructure',
+        'land',
+        'land_cover',
+        'land_use',
+        'water',
+        'building',
+        'building_part',
+        'division',
+        'division_area',
+        'division_boundary',
+        'place',
+        'connector',
+        '建築物',
+      ]
+      const widths = calculateColumnWidths(featureTypes)
+      const ctx = createContext({ featureTypes, ...widths })
+      const originalLog = console.log
+      const snapshots: string[] = []
+      console.log = value => snapshots.push(stripAnsi(String(value)))
+      try {
+        displayTableHeader(ctx)
+        updateProgressDisplay(
+          'bathymetry',
+          1,
+          15,
+          createProgressState({
+            bboxComplete: true,
+            geomComplete: true,
+            hasCountMetric: true,
+            featureCount: 10,
+            hasAreaMetric: true,
+            featureAreaKm2: 391,
+          }),
+          widths.featureNameWidth,
+          widths.indexWidth,
+        )
+        updateProgressDisplay(
+          'division',
+          9,
+          15,
+          createProgressState({
+            isProcessing: true,
+            activeStage: 'bbox',
+          }),
+          widths.featureNameWidth,
+          widths.indexWidth,
+        )
+        await handleSkippedFeature(ctx, 'connector', 13, '/tmp/existing.parquet')
+        completeProgressDisplay('Layout preview')
+      } finally {
+        finalizeProgressDisplay()
+        console.log = originalLog
+      }
+
+      const snapshot = snapshots.at(-1)
+      assert.ok(snapshot)
+      const lines = snapshot.split('\n').slice(0, 17)
+      const columnWidths = lines[0].split('│').map(cell => stringWidth(cell))
+      assert.equal(columnWidths.length, 8)
+      for (const line of lines) {
+        assert.deepEqual(
+          line.split(/[│┼]/).map(cell => stringWidth(cell)),
+          columnWidths,
+        )
+      }
+      assert.equal(lines[0].split('│')[4].trim(), 'COUNT')
+      assert.equal(lines[3].split('│')[4].trim(), '10')
+      assert.match(lines[3], /✓/)
+      assert.match(lines[11], /◒/)
+      assert.match(lines[15], /»/)
+      assert.match(lines[16], /建築物/)
+    })
+  })
+
   test('does not print an initial empty table before the first row change', async () => {
     const calls = await withStdoutIsTTY(false, async () => {
       const { displayTableHeader } = await loadProgressModule()

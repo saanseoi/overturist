@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.2
+
+### Patch Changes
+
+- Normalize the CLI executable mapping for npm packaging.
+
+- Handle empty spatial extraction results as successful zero-row Parquet outputs, and retain underlying error details in spatial download failure summaries.
+
+- d0acc5a: Fix download error reporting and statistics handling:
+
+  - Report failed feature extractions and exit unsuccessfully after processing the remaining features.
+  - Allow final statistics to resolve in the background while subsequent downloads proceed.
+  - Preserve unknown polygon areas instead of displaying them as zero.
+  - Handle apostrophes in output paths and division IDs consistently in DuckDB queries.
+
+  Simplify progress statistics handling and remove redundant filesystem checks.
+
+- 7f7c1ce: Align download progress headers and rows using shared column widths and separators. Right-align numeric columns, center status markers, and use single-width symbols for consistent terminal rendering.
+
 ## 0.2.1
 
 ### Patch Changes
