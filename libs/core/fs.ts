@@ -56,11 +56,7 @@ export async function checkForExistingFiles(
         spatialGeometry,
       ),
     )
-    const fileExists = await fs
-      .access(filePath)
-      .then(() => true)
-      .catch(() => false)
-    if (fileExists) {
+    if (await fileExists(filePath)) {
       existingFiles.push(type)
     }
   }
@@ -228,7 +224,7 @@ export async function ensureVersionedCacheDir(
   version: string,
   subDir?: string,
 ): Promise<void> {
-  const versionDir = path.join(CACHE_DIR, version, subDir ? subDir : '')
+  const versionDir = path.join(CACHE_DIR, version, subDir ?? '')
   await ensureDirectoryExists(versionDir)
 }
 
@@ -306,7 +302,6 @@ export async function ensureDirectoryExists(dirPath: string): Promise<void> {
  */
 export async function readJsonFile<T>(filePath: string): Promise<T | null> {
   try {
-    await fs.access(filePath)
     const data = await fs.readFile(filePath, 'utf-8')
     return JSON.parse(data) as T
   } catch {

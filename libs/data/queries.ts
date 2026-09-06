@@ -457,7 +457,9 @@ async function getFeatureStatsWithConnection(
   connection: DuckDBConnection,
   filePath: string,
 ): Promise<FeatureStats> {
-  const reader = await connection.runAndReadAll(buildFeatureStatsQuery(`'${filePath}'`))
+  const reader = await connection.runAndReadAll(
+    buildFeatureStatsQuery(escapeSqlLiteral(filePath)),
+  )
   const result = reader.getRowObjectsJson() as Array<{
     count: number
     polygon_count: number
@@ -479,7 +481,7 @@ async function getFeatureStatsWithConnection(
  */
 export async function getCount(filePath: string): Promise<number> {
   const { stdout: countStdout } = await runDuckDBQuery(
-    `SELECT COUNT(*) as count FROM '${filePath}';`,
+    `SELECT COUNT(*) as count FROM ${escapeSqlLiteral(filePath)};`,
   )
   // Parse the JSON result and return the count
   return JSON.parse(countStdout)[0].count
@@ -494,7 +496,7 @@ export async function getFeatureStats(filePath: string): Promise<FeatureStats> {
   const { stdout } = await runDuckDBQuery(
     `
       ${DUCK_DB_LOCAL_SPATIAL_SETUP}
-      ${buildFeatureStatsQuery(`'${filePath}'`)}
+      ${buildFeatureStatsQuery(escapeSqlLiteral(filePath))}
     `,
   )
   const result = JSON.parse(stdout) as Array<{
@@ -629,7 +631,7 @@ export async function getDivisionsByName(
         json_extract_string(names, '$.primary') AS primary_name,
         ${localeCommonNameSelect}
         LOWER(country) AS country_lower
-      FROM read_parquet('${divisionPath}')
+      FROM read_parquet(${escapeSqlLiteral(divisionPath)})
       WHERE (${subtypeFilter})
     ),
     ranked_divisions AS (
@@ -701,7 +703,7 @@ export async function getDivisionsByIds(
     ${DUCK_DB_REMOTE_SETUP}
     SELECT
       ${DIVISION_METADATA_COLUMNS}
-    FROM read_parquet('${divisionPath}')
+    FROM read_parquet(${escapeSqlLiteral(divisionPath)})
     WHERE id IN (${idList});
   `
 
@@ -748,7 +750,7 @@ export async function getDivisionsBySourceRecordId(
     ${DUCK_DB_REMOTE_SETUP}
     SELECT DISTINCT
       division_id
-    FROM read_parquet('${divisionAreaPath}', filename=true, hive_partitioning=1),
+    FROM read_parquet(${escapeSqlLiteral(divisionAreaPath)}, filename=true, hive_partitioning=1),
       unnest(sources) AS source(source)
     WHERE source.record_id LIKE ${recordIdLikeLiteral} ESCAPE '\\';
   `
@@ -893,10 +895,10 @@ export async function getFeaturesForWorld(
         ${DUCK_DB_REMOTE_SETUP}
 
         COPY (
-            SELECT * FROM read_parquet('${s3Path}*.parquet')
-        ) TO '${outputFile}' (FORMAT PARQUET, COMPRESSION 'ZSTD');
+            SELECT * FROM read_parquet(${escapeSqlLiteral(`${s3Path}*.parquet`)})
+        ) TO ${escapeSqlLiteral(outputFile)} (FORMAT PARQUET, COMPRESSION 'ZSTD');
 
-        ${buildFeatureStatsQuery(`'${outputFile}'`)}
+        ${buildFeatureStatsQuery(escapeSqlLiteral(outputFile))}
   `
 
   try {
@@ -955,7 +957,9 @@ export async function getFeaturesForSpatialWithConnection(
   finalAreaKm2: number | null
   finalStatsDeferred?: boolean
 }> {
-  const s3Path = `'s3://overturemaps-us-west-2/release/${ctx.releaseVersion}/theme=${theme}/type=${featureType}/*.parquet'`
+  const s3Path = escapeSqlLiteral(
+    `s3://overturemaps-us-west-2/release/${ctx.releaseVersion}/theme=${theme}/type=${featureType}/*.parquet`,
+  )
   const cacheFile = await getTempCachePath(outputFile)
 
   if (!ctx.bbox) {
@@ -977,7 +981,7 @@ export async function getFeaturesForSpatialWithConnection(
                 SELECT *
                 FROM read_parquet(${s3Path})
                 WHERE ${buildPrefilterWhereClause(ctx)}
-            ) TO '${cacheFile}' (FORMAT PARQUET, COMPRESSION 'ZSTD');
+            ) TO ${escapeSqlLiteral(cacheFile)} (FORMAT PARQUET, COMPRESSION 'ZSTD');
         `
 
     await connection.run(bboxFilterQuery)
@@ -1024,7 +1028,7 @@ export async function getFeaturesForSpatialWithConnection(
                         SELECT
                             *,
                             ${clippedGeometryExpression} AS clipped_geometry
-                        FROM read_parquet('${cacheFile}')
+                        FROM read_parquet(${escapeSqlLiteral(cacheFile)})
                         WHERE ${exactPredicate}
                     )
                     SELECT
@@ -1040,14 +1044,14 @@ export async function getFeaturesForSpatialWithConnection(
                     )
                     FROM matching_features
                     WHERE ${clippedGeometryRetentionWhereClause}
-                ) TO '${outputFile}' (FORMAT PARQUET, COMPRESSION 'ZSTD');
+                ) TO ${escapeSqlLiteral(outputFile)} (FORMAT PARQUET, COMPRESSION 'ZSTD');
             `
         : `
                 COPY (
                     SELECT *
-                    FROM read_parquet('${cacheFile}')
+                    FROM read_parquet(${escapeSqlLiteral(cacheFile)})
                     WHERE ${exactPredicate}
-                ) TO '${outputFile}' (FORMAT PARQUET, COMPRESSION 'ZSTD');
+                ) TO ${escapeSqlLiteral(outputFile)} (FORMAT PARQUET, COMPRESSION 'ZSTD');
             `
 
       await connection.run(geomFilterQuery)
@@ -1085,7 +1089,7 @@ export async function getFeaturesForSpatialWithConnection(
     } else {
       // No features in bbox, create empty output file
       await connection.run(
-        `COPY (SELECT * FROM read_parquet('${cacheFile}') LIMIT 0) TO '${outputFile}' (FORMAT PARQUET, COMPRESSION 'ZSTD');`,
+        `COPY (SELECT * FROM read_parquet(${escapeSqlLiteral(cacheFile)}) LIMIT 0) TO ${escapeSqlLiteral(outputFile)} (FORMAT PARQUET, COMPRESSION 'ZSTD');`,
       )
       progressCallback?.({
         stage: 'bbox',
@@ -1133,8 +1137,8 @@ export async function extractBoundsFromDivision(
   bbox: BBox
   geometry: string // Hex-encoded WKB binary
 } | null> {
-  const divisionAreaPath = `'${getDivisionAreaPath(releaseVersion)}'`
-  const divisionBoundaryPath = `'${getDivisionBoundaryPath(releaseVersion)}'`
+  const divisionAreaPath = escapeSqlLiteral(getDivisionAreaPath(releaseVersion))
+  const divisionBoundaryPath = escapeSqlLiteral(getDivisionBoundaryPath(releaseVersion))
 
   // Combine area and boundary geometries so bbox extraction and final geometry are derived from the same union.
   const bboxQuery = `
@@ -1142,11 +1146,11 @@ export async function extractBoundsFromDivision(
         WITH combined_geoms AS (
             SELECT geometry as geom
             FROM read_parquet(${divisionAreaPath})
-            WHERE division_id = '${divisionId}' AND geometry IS NOT NULL
+            WHERE division_id = ${escapeSqlLiteral(divisionId)} AND geometry IS NOT NULL
             UNION ALL
             SELECT geometry as geom
             FROM read_parquet(${divisionBoundaryPath})
-            WHERE list_contains(division_ids, '${divisionId}') AND geometry IS NOT NULL
+            WHERE list_contains(division_ids, ${escapeSqlLiteral(divisionId)}) AND geometry IS NOT NULL
         ),
         bounds_query AS (
             SELECT

@@ -45,8 +45,18 @@ import {
 } from '../ui'
 import { bail, bailFromSpinner, getDiffCount } from '../core/utils'
 
+/**
+ * Identifies targets that require a bounded spatial pass.
+ * @param ctx - Resolved extraction context
+ * @returns True for bounded targets
+ */
 function hasExactSpatialPass(ctx: ControlContext): boolean {
   return ctx.target !== 'world'
+}
+
+type FeatureProcessingResult = {
+  success: boolean
+  pendingStats?: Promise<void>
 }
 
 /**
@@ -57,10 +67,12 @@ function hasExactSpatialPass(ctx: ControlContext): boolean {
  * Processes every selected feature type for the active target.
  * @param ctx - Control context
  * @returns Promise that resolves when all feature types have been processed
+ * @throws Error when any selected feature fails to download
  */
-export async function processFeatureTypes(ctx: ControlContext) {
+export async function processFeatureTypes(ctx: ControlContext): Promise<void> {
   const dbManager = new DuckDBManager()
   const pendingStatsTasks: Promise<void>[] = []
+  const failedFeatureTypes: string[] = []
   try {
     // Reuse one DuckDB connection so geometry-constrained runs share setup cost.
     const connection = await dbManager.getConnection()
@@ -85,18 +97,21 @@ export async function processFeatureTypes(ctx: ControlContext) {
     }
 
     for (const [index, featureType] of ctx.featureTypes.entries()) {
-      const pendingStatsTask = await processFeatureType(
-        ctx,
-        featureType,
-        index,
-        connection,
-      )
-      if (pendingStatsTask) {
-        pendingStatsTasks.push(pendingStatsTask)
+      const result = await processFeatureType(ctx, featureType, index, connection)
+      if (!result.success) {
+        failedFeatureTypes.push(featureType)
+      }
+      if (result.pendingStats) {
+        pendingStatsTasks.push(result.pendingStats)
       }
     }
 
     await Promise.all(pendingStatsTasks)
+    if (failedFeatureTypes.length > 0) {
+      const message = `Download failed for: ${failedFeatureTypes.join(', ')}`
+      completeProgressDisplay(kleur.red(message))
+      throw new Error(message)
+    }
     const { bytes, fileCount } = await getCombinedOutputSize(ctx)
     completeProgressDisplay(
       kleur.green(
@@ -104,6 +119,8 @@ export async function processFeatureTypes(ctx: ControlContext) {
       ),
     )
   } finally {
+    // Drain background updates before tearing down the progress display, even on errors.
+    await Promise.allSettled(pendingStatsTasks)
     finalizeProgressDisplay()
     await dbManager.close()
   }
@@ -239,66 +256,40 @@ async function initProgressTracker(
 
 /**
  * Marks the completed stages and stores the final feature stats for a row.
- * @param result - Result object with success and stats properties
+ * @param stats - Final feature count and area statistics
  * @param progressState - Current progress state to update
  * @param lastReleaseStats - Previous release stats for diff calculation
- * @param featureType - Feature type name for error messages
- * @param countKey - Result property that contains the final feature count
- * @param hasAreaKey - Result property that reports whether polygon area applies
- * @param areaKey - Result property that contains the final polygon area
+ * @param theme - Theme bucket associated with the feature
+ * @param featureType - Feature type name for status messages
  * @param completedStage - Final stage completed by the processing path
+ * @returns Nothing. Updates the existing row state.
  */
 function updateProgressForCompletedFeature(
-  result: {
-    success: boolean
-    count?: number
-    hasArea?: boolean
-    areaKm2?: number | null
-    finalCount?: number
-    finalHasArea?: boolean
-    finalAreaKm2?: number | null
-    bboxCount?: number
-    bboxHasArea?: boolean
-    bboxAreaKm2?: number | null
-  },
+  stats: FeatureStats,
   progressState: ProgressState,
   lastReleaseStats: FeatureStats | null,
   theme: string | undefined,
   featureType: string,
-  countKey: keyof Pick<typeof result, 'count' | 'finalCount' | 'bboxCount'> = 'count',
-  hasAreaKey: keyof Pick<
-    typeof result,
-    'hasArea' | 'finalHasArea' | 'bboxHasArea'
-  > = 'hasArea',
-  areaKey: keyof Pick<
-    typeof result,
-    'areaKm2' | 'finalAreaKm2' | 'bboxAreaKm2'
-  > = 'areaKm2',
   completedStage: 'bbox' | 'geometry' = 'bbox',
 ): void {
-  if (result.success) {
-    progressState.bboxComplete = true
-    progressState.geomComplete = completedStage === 'geometry'
-    progressState.isProcessing = false
-    progressState.activeStage = null
+  progressState.bboxComplete = true
+  progressState.geomComplete = completedStage === 'geometry'
+  progressState.isProcessing = false
+  progressState.activeStage = null
 
-    const count = (result[countKey] as number) || 0
-    const hasArea = Boolean(result[hasAreaKey])
-    const areaKm2 = hasArea ? ((result[areaKey] as number | null) ?? 0) : null
+  const { count, hasArea } = stats
+  const areaKm2 = hasArea ? stats.areaKm2 : null
 
-    progressState.featureCount = count
-    progressState.hasCountMetric = true
-    progressState.diffCount = getDiffCount(count, lastReleaseStats?.count ?? null)
-    progressState.hasAreaMetric = hasArea || (lastReleaseStats?.hasArea ?? false)
-    progressState.featureAreaKm2 = areaKm2
-    progressState.diffAreaKm2 =
-      progressState.hasAreaMetric && areaKm2 !== null
-        ? getDiffCount(areaKm2, lastReleaseStats?.areaKm2 ?? null)
-        : null
-    progressState.currentMessage = `${kleur.white('Completed')} ${formatProgressSubject(theme, featureType)} ${kleur.white(`(${count} features)`)}`
-  } else {
-    throw new Error(`Failed to process dataset for ${featureType}`)
-  }
+  progressState.featureCount = count
+  progressState.hasCountMetric = true
+  progressState.diffCount = getDiffCount(count, lastReleaseStats?.count ?? null)
+  progressState.hasAreaMetric = hasArea || (lastReleaseStats?.hasArea ?? false)
+  progressState.featureAreaKm2 = areaKm2
+  progressState.diffAreaKm2 =
+    progressState.hasAreaMetric && areaKm2 !== null
+      ? getDiffCount(areaKm2, lastReleaseStats?.areaKm2 ?? null)
+      : null
+  progressState.currentMessage = `${kleur.white('Completed')} ${formatProgressSubject(theme, featureType)} ${kleur.white(`(${count} features)`)}`
 }
 
 /**
@@ -378,7 +369,8 @@ function createProgressCallback(
  * @param progressState - Progress state object
  * @param lastReleaseStats - Previous release stats for diff calculation
  * @param connection - Shared DuckDB connection for geometry-constrained runs
- * @returns Promise that resolves when feature processing completes successfully
+ * @returns Extraction result containing any background statistics task
+ * @remarks Wrap the statistics promise so async return-value adoption does not await it.
  */
 async function runFeatureExtraction(
   ctx: ControlContext,
@@ -388,7 +380,7 @@ async function runFeatureExtraction(
   progressState: ProgressState,
   lastReleaseStats: FeatureStats | null,
   connection?: DuckDBConnection,
-): Promise<Promise<void> | null> {
+): Promise<FeatureProcessingResult> {
   const { featureTypes, featureNameWidth, indexWidth, target } = ctx
   const theme = ctx.themeMapping[featureType]
   const progressSubject = formatProgressSubject(theme, featureType)
@@ -428,18 +420,18 @@ async function runFeatureExtraction(
           },
         ),
     )
+    if (!result.success) {
+      throw new Error(`Failed to process dataset for ${featureType}`)
+    }
     updateProgressForCompletedFeature(
       result,
       progressState,
       lastReleaseStats,
       theme,
       featureType,
-      'count',
-      'hasArea',
-      'areaKm2',
       'bbox',
     )
-    return null
+    return { success: true }
   }
 
   if (!ctx.bbox) {
@@ -467,26 +459,22 @@ async function runFeatureExtraction(
     'defer',
   )
 
+  if (!result.success) {
+    throw new Error(`Failed to process dataset for ${featureType}`)
+  }
+
   if (result.finalStatsDeferred) {
     updateProgressForDeferredStats(progressState, lastReleaseStats, theme, featureType)
 
-    return (async () => {
+    const pendingStats = (async () => {
       try {
         const finalStats = await getFeatureStats(outputPath)
         updateProgressForCompletedFeature(
-          {
-            success: true,
-            finalCount: finalStats.count,
-            finalHasArea: finalStats.hasArea,
-            finalAreaKm2: finalStats.areaKm2,
-          },
+          finalStats,
           progressState,
           lastReleaseStats,
           theme,
           featureType,
-          'finalCount',
-          'finalHasArea',
-          'finalAreaKm2',
           'geometry',
         )
         updateProgressStatus(progressState.currentMessage ?? kleur.green('Completed'))
@@ -495,20 +483,22 @@ async function runFeatureExtraction(
         updateProgressStatus(progressState.currentMessage, true)
       }
     })()
+    return { success: true, pendingStats }
   }
 
   updateProgressForCompletedFeature(
-    result,
+    {
+      count: result.finalCount,
+      hasArea: result.finalHasArea,
+      areaKm2: result.finalAreaKm2,
+    },
     progressState,
     lastReleaseStats,
     theme,
     featureType,
-    'finalCount',
-    'finalHasArea',
-    'finalAreaKm2',
     'geometry',
   )
-  return null
+  return { success: true }
 }
 
 /**
@@ -517,14 +507,14 @@ async function runFeatureExtraction(
  * @param featureType - Feature type to process
  * @param index - Index of the feature type in the array
  * @param connection - Shared DuckDB connection for geometry-constrained runs
- * @returns Promise that resolves when the feature has been handled
+ * @returns Success status and any background statistics task
  */
 async function processFeatureType(
   ctx: ControlContext,
   featureType: string,
   index: number,
   connection?: DuckDBConnection,
-): Promise<Promise<void> | null> {
+): Promise<FeatureProcessingResult> {
   const { featureTypes, featureNameWidth, indexWidth } = ctx
   const countWidth = ctx.target === 'division' ? 7 : 9
 
@@ -542,7 +532,7 @@ async function processFeatureType(
   const outputFileExists = await fileExists(outputPath)
   if (outputFileExists && ctx.onFileExists === 'skip') {
     await handleSkippedFeature(ctx, featureType, index, outputPath)
-    return null
+    return { success: true }
   }
 
   const { lastReleaseStats, progressState } = await initProgressTracker(
@@ -556,7 +546,7 @@ async function processFeatureType(
 
   try {
     // Route each feature through the single-stage or two-stage extraction path.
-    const pendingStatsTask = await runFeatureExtraction(
+    const result = await runFeatureExtraction(
       ctx,
       featureType,
       index,
@@ -574,7 +564,7 @@ async function processFeatureType(
       indexWidth,
       countWidth,
     )
-    return pendingStatsTask
+    return result
   } catch (error) {
     progressState.isProcessing = false
     progressState.activeStage = null
@@ -589,7 +579,7 @@ async function processFeatureType(
       countWidth,
     )
     updateProgressStatus(progressState.currentMessage, true)
-    return null
+    return { success: false }
   }
 }
 
